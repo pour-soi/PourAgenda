@@ -8,6 +8,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 import type { DateSelectArg, DatesSetArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { DayExperience } from "@/components/day-experience";
+import { localInputToUtc, toLocalInput } from "@/lib/appointments";
+import { dayKind, zonedDateKey } from "@/lib/personal-productivity";
 
 declare global {
   interface Window {
@@ -25,7 +28,7 @@ type CalendarEvent = {
   borderColor: string;
   textColor: string;
   classNames: string[];
-  extendedProps: { category: string; recurring: boolean };
+  extendedProps: { category: string; recurring: boolean; location?: string | null; notes?: string | null };
 };
 
 const MOBILE_WEEK_VIEW = "timeGridMobileWeek";
@@ -41,6 +44,20 @@ const subscribeToMobileWidth = (onChange: () => void) => {
 
 const getMobileWidth = () => typeof window !== "undefined" && window.matchMedia(MOBILE_QUERY).matches;
 const getServerMobileWidth = () => false;
+const localDateKey = (date: Date) => [
+  date.getFullYear(),
+  (date.getMonth() + 1).toString().padStart(2, "0"),
+  date.getDate().toString().padStart(2, "0"),
+].join("-");
+
+export function calendarWallTimeToInstant(date: Date, timezone: string, allDay: boolean) {
+  if (allDay) return new Date(`${localDateKey(date)}T00:00:00.000Z`);
+  const localValue = [
+    localDateKey(date),
+    `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`,
+  ].join("T");
+  return new Date(localInputToUtc(localValue, timezone));
+}
 
 const compactCalendarTitle = (view: Pick<DatesSetArg["view"], "type" | "title" | "currentStart" | "currentEnd">) => {
   if (view.type === "dayGridMonth") return view.title;
@@ -67,15 +84,19 @@ export function preferredCalendarScrollTime(
   selectedDate: Date,
   events: Pick<CalendarEvent, "start" | "allDay">[],
   now = new Date(),
+  timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ) {
-  const dateKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  const isToday = dateKey(selectedDate) === dateKey(now);
-  let minutes = isToday ? Math.max(0, now.getHours() * 60 + now.getMinutes() - 60) : 7 * 60;
+  const selectedKey = localDateKey(selectedDate);
+  const nowLocal = toLocalInput(now.toISOString(), timezone);
+  const isToday = selectedKey === nowLocal.slice(0, 10);
+  const [nowHour, nowMinute] = nowLocal.slice(11).split(":").map(Number);
+  let minutes = isToday ? Math.max(0, nowHour * 60 + nowMinute - 60) : 7 * 60;
   const earliestEvent = events
-    .filter((event) => !event.allDay && dateKey(new Date(event.start)) === dateKey(selectedDate))
+    .filter((event) => !event.allDay && toLocalInput(event.start, timezone).slice(0, 10) === selectedKey)
     .map((event) => {
-      const start = new Date(event.start);
-      return start.getHours() * 60 + start.getMinutes();
+      const [, time] = toLocalInput(event.start, timezone).split("T");
+      const [hour, minute] = time.split(":").map(Number);
+      return hour * 60 + minute;
     })
     .sort((a, b) => a - b)[0];
   if (earliestEvent !== undefined) minutes = Math.min(minutes, Math.max(0, earliestEvent - 30));
@@ -92,6 +113,8 @@ export default function CalendarView({
   onSelect,
   onOpen,
   onMove,
+  onCreateForDate,
+  timezone,
 }: {
   events: CalendarEvent[];
   dataLoadedAt: number;
@@ -100,6 +123,8 @@ export default function CalendarView({
   onSelect: (start: Date, end: Date, allDay: boolean) => void;
   onOpen: (id: string) => void;
   onMove: (id: string, start: Date, end: Date, revert: () => void) => void;
+  onCreateForDate: (dateKey: string) => void;
+  timezone: string;
 }) {
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useSyncExternalStore(subscribeToMobileWidth, getMobileWidth, getServerMobileWidth);
@@ -109,6 +134,7 @@ export default function CalendarView({
   ));
   const [currentView, setCurrentView] = useState(initialView);
   const [title, setTitle] = useState("");
+  const [selectedDateKey, setSelectedDateKey] = useState(() => zonedDateKey(new Date(), timezone));
   const pendingScroll = useRef<{ key: string; requestedAt: number; date: Date } | null>(null);
   const completedScroll = useRef("");
 
@@ -142,15 +168,16 @@ export default function CalendarView({
     if (!calendar) return;
     if (direction === "previous") calendar.prev();
     else if (direction === "next") calendar.next();
-    else calendar.today();
-  }, []);
+    else calendar.gotoDate(zonedDateKey(new Date(), timezone));
+  }, [timezone]);
 
   const handleDatesSet = useCallback((arg: DatesSetArg) => {
     setTitle(isMobile ? compactCalendarTitle(arg.view) : arg.view.title);
     setCurrentView(arg.view.type);
+    if (arg.view.type === "timeGridDay") setSelectedDateKey(localDateKey(arg.view.currentStart));
     onViewChange(arg.view.type === MOBILE_WEEK_VIEW ? "timeGridWeek" : arg.view.type);
     onRange(arg.start, arg.end);
-    if (isMobile && (arg.view.type === MOBILE_WEEK_VIEW || arg.view.type === "timeGridDay")) {
+    if (arg.view.type === "timeGridDay" || (isMobile && arg.view.type === MOBILE_WEEK_VIEW)) {
       pendingScroll.current = {
         key: `${arg.view.type}:${arg.view.currentStart.toISOString()}`,
         requestedAt: Date.now(),
@@ -166,16 +193,40 @@ export default function CalendarView({
     { label: "Agenda", view: "listWeek", active: currentView === "listWeek" },
   ];
   const isMobileTimeView = isMobile && (currentView === MOBILE_WEEK_VIEW || currentView === "timeGridDay");
+  const isManagedTimeView = currentView === "timeGridDay" || (isMobile && currentView === MOBILE_WEEK_VIEW);
+  const todayButtonLabel = currentView === "dayGridMonth"
+    ? "Go to current month"
+    : currentView === "timeGridWeek" || currentView === MOBILE_WEEK_VIEW
+      ? "Go to current week"
+      : currentView === "listWeek"
+        ? "Go to today's agenda"
+        : "Go to today";
+  const productivityEvents = events.map((event) => ({
+    id: event.id,
+    title: event.title,
+    start: event.start,
+    end: event.end,
+    allDay: event.allDay,
+    category: event.extendedProps.category,
+    categoryColor: event.backgroundColor,
+    location: event.extendedProps.location,
+    notes: event.extendedProps.notes,
+  }));
+  const displayEvents = events.map((event) => event.allDay ? event : {
+    ...event,
+    start: toLocalInput(event.start, timezone),
+    end: toLocalInput(event.end, timezone),
+  });
 
   useEffect(() => {
     const request = pendingScroll.current;
-    if (!isMobileTimeView || !request || dataLoadedAt < request.requestedAt || completedScroll.current === request.key) return;
+    if (!isManagedTimeView || !request || dataLoadedAt < request.requestedAt || completedScroll.current === request.key) return;
     const frame = window.requestAnimationFrame(() => {
-      calendarRef.current?.getApi().scrollToTime(preferredCalendarScrollTime(request.date, events));
+      calendarRef.current?.getApi().scrollToTime(preferredCalendarScrollTime(request.date, events, new Date(), timezone));
       completedScroll.current = request.key;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [dataLoadedAt, events, isMobileTimeView]);
+  }, [dataLoadedAt, events, isManagedTimeView, timezone]);
 
   return (
     <div className="calendar-card rounded-[var(--radius)] border border-border bg-surface">
@@ -189,7 +240,7 @@ export default function CalendarView({
             <button type="button" onClick={() => navigate("next")} aria-label="Next period">
               <ChevronRight size={19} aria-hidden="true" />
             </button>
-            <button type="button" onClick={() => navigate("today")} className="calendar-today-button">Today</button>
+            <button type="button" onClick={() => navigate("today")} aria-label={todayButtonLabel} className="calendar-today-button">Today</button>
           </div>
         </div>
         <div className="calendar-view-selector" role="group" aria-label="Calendar view">
@@ -205,6 +256,16 @@ export default function CalendarView({
           ))}
         </div>
       </div>}
+      {currentView === "timeGridDay" && (
+        <DayExperience
+          events={productivityEvents}
+          dateKey={selectedDateKey}
+          timezone={timezone}
+          onOpen={onOpen}
+          onCreate={onCreateForDate}
+          onReturnMonth={() => changeView("dayGridMonth")}
+        />
+      )}
       <div className="pouragenda-calendar">
         <FullCalendar
           ref={calendarRef}
@@ -224,8 +285,19 @@ export default function CalendarView({
           }}
           headerToolbar={isMobile
             ? false
-            : { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek" }}
-          events={events}
+            : {
+              left: "prev,next contextToday",
+              center: currentView === "timeGridDay" ? "" : "title",
+              right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek",
+            }}
+          customButtons={{
+            contextToday: {
+              text: "Today",
+              hint: todayButtonLabel,
+              click: () => navigate("today"),
+            },
+          }}
+          events={displayEvents}
           editable
           eventDragMinDistance={1}
           selectable
@@ -240,10 +312,27 @@ export default function CalendarView({
             arg.el.dataset.appointmentId = arg.event.id;
             arg.el.style.setProperty("--category-color", arg.event.backgroundColor);
             arg.el.style.setProperty("--category-text-color", arg.event.textColor);
+            const sourceEvent = events.find((event) => event.id === arg.event.id);
+            if (arg.view.type === "timeGridDay" && sourceEvent && !sourceEvent.allDay) {
+              const now = Date.now();
+              const state = now >= Date.parse(sourceEvent.end)
+                ? "past"
+                : now >= Date.parse(sourceEvent.start)
+                  ? "current"
+                  : "future";
+              arg.el.dataset.timeState = state;
+              arg.el.setAttribute("aria-label", `${arg.event.title}, ${arg.event.extendedProps.category}, ${state} event`);
+            }
           }}
           eventChange={(arg: EventChangeArg) => {
             if (!arg.event.start) return arg.revert();
-            onMove(arg.event.id, arg.event.start, arg.event.end ?? arg.event.start, arg.revert);
+            const end = arg.event.end ?? arg.event.start;
+            onMove(
+              arg.event.id,
+              calendarWallTimeToInstant(arg.event.start, timezone, arg.event.allDay),
+              calendarWallTimeToInstant(end, timezone, arg.event.allDay),
+              arg.revert,
+            );
           }}
           eventContent={(arg) => (
             <span className="calendar-event-content" aria-label={`${arg.event.title}, ${arg.event.extendedProps.category}`}>
@@ -256,8 +345,17 @@ export default function CalendarView({
           moreLinkContent={(arg) => `+${arg.num}`}
           moreLinkClick="popover"
           stickyHeaderDates
-          nowIndicator
-          height={isMobileTimeView ? "clamp(18rem, calc(100dvh - 18rem), 42rem)" : "auto"}
+          now={() => toLocalInput(new Date().toISOString(), timezone)}
+          nowIndicator={currentView !== "timeGridDay" || dayKind(selectedDateKey, timezone) === "today"}
+          scrollTime="07:00:00"
+          scrollTimeReset={false}
+          height={currentView === "timeGridDay"
+            ? isMobile
+              ? "clamp(18rem, calc(100dvh - 18rem), 42rem)"
+              : "clamp(28rem, calc(100dvh - 24rem), 48rem)"
+            : isMobileTimeView
+              ? "clamp(18rem, calc(100dvh - 18rem), 42rem)"
+              : "auto"}
           buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "Agenda" }}
         />
       </div>

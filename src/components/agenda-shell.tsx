@@ -4,11 +4,14 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, CalendarDays, Filter, List, Plus, RotateCcw, Settings, Trash2, X } from "lucide-react";
+import { Archive, CalendarDays, Filter, List, Plus, RotateCcw, Search, Settings, Trash2, X } from "lucide-react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { AppointmentListPanel } from "@/components/appointment-list-panel";
+import { GlobalEventSearch } from "@/components/global-event-search";
+import { QuickAdd } from "@/components/quick-add";
 import { allDayEndToInput, allDayEndToUtc, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
+import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
 import { expandAppointments, findRecurringConflicts, recurrenceSummary } from "@/lib/recurrence";
 import { REMINDER_OPTIONS, normalizeReminderMinutes, reminderTimes } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
@@ -62,6 +65,7 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [draftHint, setDraftHint] = useState("");
   const [conflicts, setConflicts] = useState<Appointment[]>([]);
   const [allowConflict, setAllowConflict] = useState(false);
   const [view, setView] = useState<"calendar" | "lists">("calendar");
@@ -84,6 +88,11 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
   const [shareUrl, setShareUrl] = useState("");
   const [shareLocation, setShareLocation] = useState(false);
   const [shareNotes, setShareNotes] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [searchCatalog, setSearchCatalog] = useState<Appointment[]>([]);
+  const [searchCatalogLoading, setSearchCatalogLoading] = useState(false);
+  const [searchCatalogError, setSearchCatalogError] = useState("");
+  const [searchCatalogLoaded, setSearchCatalogLoaded] = useState(false);
   const calendarLoaded = useRef(false);
   const calendarLoadGeneration = useRef(0);
   const endOverridden = useRef(false);
@@ -181,6 +190,37 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
     }
     return () => timers.forEach(window.clearTimeout);
   }, [appointments, timezone]);
+  const loadSearchCatalog = useCallback(async () => {
+    if (!navigator.onLine) return;
+    setSearchCatalogLoading(true);
+    setSearchCatalogError("");
+    const result = await supabase.from("appointments").select("*")
+      .eq("archived", false).neq("status", "cancelled")
+      .order("starts_at", { ascending: false }).limit(1000);
+    if (result.error) setSearchCatalogError("Search could not load all authorized events. Try again.");
+    else {
+      setSearchCatalog(result.data as Appointment[]);
+      setSearchCatalogLoaded(true);
+    }
+    setSearchCatalogLoading(false);
+  }, [supabase]);
+  const openGlobalSearch = useCallback(() => {
+    setGlobalSearchOpen(true);
+    if (!searchCatalogLoaded && navigator.onLine) void loadSearchCatalog();
+  }, [loadSearchCatalog, searchCatalogLoaded]);
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editingText = target?.matches("input, textarea, select, [contenteditable='true']");
+      const command = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
+      const slash = event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey;
+      if ((!command && !slash) || (editingText && !command)) return;
+      event.preventDefault();
+      openGlobalSearch();
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [openGlobalSearch]);
 
   function startCreate(start?: Date, end?: Date, allDay = false) {
     const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
@@ -190,7 +230,27 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
       next.all_day = allDay;
     }
     endOverridden.current = false;
-    setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]); setAllowConflict(false); setStale(false); setMessage(""); setOpen(true);
+    setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
+  }
+  function startCreateForDate(dateKey: string) {
+    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
+    next.starts_at = `${dateKey}T${next.starts_at.slice(11)}`;
+    next.ends_at = shiftLocalField(next.starts_at, 60 * 60_000);
+    endOverridden.current = false;
+    setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
+    setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
+  }
+  function startQuickAdd(result: QuickAddResult) {
+    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
+    next.title = result.title;
+    if (result.dateKey) {
+      const time = result.time ?? next.starts_at.slice(11);
+      next.starts_at = `${result.dateKey}T${time}`;
+      next.ends_at = shiftLocalField(next.starts_at, 60 * 60_000);
+    }
+    endOverridden.current = false;
+    setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
+    setAllowConflict(false); setStale(false); setDraftHint(result.explanation); setMessage(""); setOpen(true);
   }
   async function startEdit(item: Appointment | AppointmentOccurrence) {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
@@ -217,7 +277,7 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
       recurrence_frequency: parentId && occurrenceScope ? "" : current.recurrence_frequency ?? "",
       recurrence_interval: current.recurrence_interval ?? 1, recurrence_until: current.recurrence_until ?? "",
       reminder_minutes: current.reminder_minutes ?? [] });
-    setConflicts([]); setAllowConflict(false); setStale(false); setMessage(""); setOpen(true);
+    setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
   }
   const iso = (value: string, allDay: boolean, isEnd = false) => allDay && isEnd ? allDayEndToUtc(value) : localInputToUtc(value, timezone, allDay);
   async function save(event?: FormEvent, forceConflict = false) {
@@ -483,8 +543,35 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
     return { id: item.occurrence_id, title: item.title, start: item.starts_at, end: item.ends_at,
       allDay: item.all_day, backgroundColor: color, borderColor: color, textColor: contrastingText(color),
       classNames: item.status === "cancelled" ? ["appointment-cancelled"] : [],
-      extendedProps: { category: categoryData?.name ?? "Other", recurring: Boolean(item.series_parent_id) } };
+      extendedProps: {
+        category: categoryData?.name ?? "Other",
+        recurring: Boolean(item.series_parent_id),
+        location: item.location,
+        notes: item.public_notes ?? item.private_notes,
+      } };
   });
+  const globalSearchEvents = useMemo(() => {
+    const combined: (Appointment | AppointmentOccurrence)[] = [...appointments, ...searchCatalog];
+    const seen = new Set<string>();
+    return combined.flatMap((item): SearchableEvent[] => {
+      const id = "occurrence_id" in item ? item.occurrence_id : item.id;
+      const identity = `${id}:${item.starts_at}`;
+      if (seen.has(identity)) return [];
+      seen.add(identity);
+      const categoryData = categories.find((value) => value.id === item.category_id);
+      return [{
+        id,
+        title: item.title,
+        startsAt: item.starts_at,
+        allDay: item.all_day,
+        category: categoryData?.name ?? "Other",
+        categoryColor: categoryData?.color ?? "#667168",
+        location: item.location,
+        notes: [item.public_notes, item.private_notes].filter(Boolean).join(" · "),
+        source: item,
+      }];
+    });
+  }, [appointments, categories, searchCatalog]);
   const upcomingAppointments = appointments
     .filter((item) => item.status !== "cancelled"
       && (!appointmentsLoadedAt || new Date(item.ends_at).getTime() >= appointmentsLoadedAt))
@@ -510,13 +597,13 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
       <div className="mt-8 border-t border-border pt-5"><p className="mb-2 truncate text-xs text-muted">{email}</p><SignOutButton /></div>
     </aside>
     <section className="mobile-content-clearance min-w-0 xl:pb-0">
-      <header className="mobile-safe-inline flex items-center justify-between border-b border-border bg-surface px-4 py-2.5 xl:px-6"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.18em] text-muted">Schedule</p><h1 className="mobile-page-title font-semibold">{view === "calendar" ? "Your calendar" : "Appointment lists"}</h1></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => setFilterOpen(true)} className="relative grid size-11 place-items-center rounded-full border border-border xl:hidden" aria-label={`Filters${filterCount ? `, ${filterCount} active` : ""}`}><Filter aria-hidden="true"/>{filterCount > 0 && <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[11px] text-white">{filterCount}</span>}</button><button type="button" onClick={() => startCreate()} className="grid size-11 place-items-center rounded-full border border-primary bg-surface text-primary" aria-label="New appointment"><Plus aria-hidden="true"/></button></div></header>
+      <header className="mobile-safe-inline flex items-center justify-between border-b border-border bg-surface px-4 py-2.5 xl:px-6"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.18em] text-muted">Schedule</p><h1 className="mobile-page-title font-semibold">{view === "calendar" ? "Your calendar" : "Appointment lists"}</h1></div><div className="flex shrink-0 gap-2"><button type="button" onClick={openGlobalSearch} className="grid size-11 place-items-center rounded-full border border-border" aria-label="Search events"><Search aria-hidden="true"/></button><button type="button" onClick={() => setFilterOpen(true)} className="relative grid size-11 place-items-center rounded-full border border-border xl:hidden" aria-label={`Filters${filterCount ? `, ${filterCount} active` : ""}`}><Filter aria-hidden="true"/>{filterCount > 0 && <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[11px] text-white">{filterCount}</span>}</button><button type="button" onClick={() => startCreate()} className="grid size-11 place-items-center rounded-full border border-primary bg-surface text-primary" aria-label="New appointment"><Plus aria-hidden="true"/></button></div></header>
       {message && <p role="status" className="m-3 rounded-lg border border-border bg-surface p-3 text-sm">{message}</p>}
       {!online && <p role="status" className="m-3 rounded-lg border border-amber-700 bg-surface p-3 text-sm">You’re offline. Previously loaded appointments remain visible, but changes are blocked until you reconnect.</p>}
       {view === "calendar" ? <>
         {calendarLoading && !hasLoadedCalendar && <div className="mobile-calendar-stage px-4 py-2.5 lg:p-6"><div className="calendar-loading-shell" role="status" aria-label="Loading appointments" aria-live="polite"><span className="sr-only">Loading appointments…</span><span className="calendar-loading-title"/><span className="calendar-loading-controls"/><span className="calendar-loading-grid"/></div></div>}
         {!calendarLoading && calendarLoadError && <div className="mobile-calendar-stage px-4 pt-2.5 lg:px-6"><div className="calendar-error-card" role="alert"><div><strong>Calendar unavailable</strong><p>{calendarLoadError}</p></div><button type="button" onClick={() => void load()}>Try again</button></div></div>}
-        {(!calendarLoadError || hasLoadedCalendar) && !calendarLoading && <div className="mobile-calendar-stage relative px-4 py-2.5 lg:p-6" aria-busy={calendarRefreshing}>{calendarRefreshing && <span role="status" className="absolute right-8 top-8 z-10 rounded bg-surface px-2 text-sm text-muted">Refreshing…</span>}<Calendar events={calendarEvents} dataLoadedAt={appointmentsLoadedAt} onRange={updateRange} onViewChange={setCalendarView} onSelect={startCreate} onOpen={(id) => { const item = appointments.find((value) => value.occurrence_id === id); if (item) startEdit(item); }} onMove={move}/></div>}
+        {(!calendarLoadError || hasLoadedCalendar) && !calendarLoading && <div className="mobile-calendar-stage relative px-4 py-2.5 lg:p-6" aria-busy={calendarRefreshing}>{calendarRefreshing && <span role="status" className="absolute right-8 top-8 z-10 rounded bg-surface px-2 text-sm text-muted">Refreshing…</span>}{calendarView === "dayGridMonth" && <QuickAdd timezone={timezone} onParsed={startQuickAdd}/>}<Calendar events={calendarEvents} dataLoadedAt={appointmentsLoadedAt} timezone={timezone} onRange={updateRange} onViewChange={setCalendarView} onSelect={startCreate} onCreateForDate={startCreateForDate} onOpen={(id) => { const item = appointments.find((value) => value.occurrence_id === id); if (item) startEdit(item); }} onMove={move}/></div>}
         {calendarView === "dayGridMonth" && !calendarLoading && (!calendarLoadError || hasLoadedCalendar) && <section className="mobile-upcoming-stage px-4 pb-5 xl:hidden" aria-labelledby="mobile-upcoming-title"><div className="rounded-[var(--radius)] border border-border bg-surface p-4"><div className="flex items-center justify-between gap-4"><h2 id="mobile-upcoming-title" className="text-lg font-semibold">Upcoming</h2><button type="button" onClick={() => { setView("lists"); setListSection("upcoming"); }} className="min-h-11 text-sm font-semibold text-primary">View all</button></div>{upcomingAppointments.length === 0 ? <p className="mt-3 rounded-lg bg-background p-4 text-sm text-muted">No upcoming appointments in this range.</p> : <div className="mt-2 divide-y divide-border">{upcomingAppointments.map((item) => { const categoryData=categories.find((value)=>value.id===item.category_id); const date=new Date(item.starts_at); return <button type="button" key={item.occurrence_id} onClick={() => startEdit(item)} className="grid min-h-14 w-full grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-3 py-2 text-left"><span aria-hidden="true" className="size-2 rounded-full" style={{backgroundColor:categoryData?.color ?? "#667168"}}/><span className="min-w-0"><span className="block truncate text-[1rem] font-semibold">{item.title}</span><span className="block text-xs text-muted">{categoryData?.name ?? "Other"}</span></span><span className="text-right text-xs text-muted"><span className="block">{date.toLocaleDateString([], { timeZone: timezone, month: "short", day: "numeric" })}</span><span className="block">{item.all_day ? "All day" : date.toLocaleTimeString([], { timeZone: timezone, hour: "numeric", minute: "2-digit" })}</span></span></button>;})}</div>}</div></section>}
       </>
       : <div className="p-3 lg:p-6"><div className="mb-4 flex gap-2 overflow-x-auto pb-2" role="tablist">{appointmentListSections.map((item) => <button key={item} role="tab" aria-selected={listSection === item} onClick={() => setListSection(item)} className={`shrink-0 rounded-full border px-4 ${listSection === item ? "bg-primary text-white" : "border-border"}`}>{item === "this-week" ? "This week" : `${item[0].toUpperCase()}${item.slice(1)}`}</button>)}</div><AppointmentListPanel section={listSection} kind="all" category={category} search={search} timezone={timezone} refreshKey={refreshKey} onOpen={(item) => void startEdit(item)}/></div>}
@@ -525,10 +612,25 @@ export function AgendaShell({ email, userId, timezone, defaultReminders, categor
     <nav aria-label="Mobile navigation" className="safe-bottom mobile-safe-inline fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border bg-surface/95 px-2 pt-2 backdrop-blur xl:hidden"><button type="button" onClick={() => setView("calendar")} aria-current={view === "calendar" ? "page" : undefined} className={`mobile-nav-item ${view === "calendar" ? "text-primary" : ""}`}><CalendarDays aria-hidden="true"/>Calendar</button><button type="button" onClick={() => setView("lists")} aria-current={view === "lists" ? "page" : undefined} className={`mobile-nav-item ${view === "lists" ? "text-primary" : ""}`}><List aria-hidden="true"/>Lists</button><button type="button" onClick={() => startCreate()} className="mobile-nav-item"><span className="grid size-9 place-items-center rounded-full bg-primary text-white"><Plus size={21} aria-hidden="true"/></span>Create</button><Link href="/settings" className="mobile-nav-item"><Settings aria-hidden="true"/>Settings</Link></nav>
 
     {filterOpen && <div className="fixed inset-0 z-50 bg-black/40 xl:hidden" role="dialog" aria-modal="true" aria-label="Appointment filters"><div className="safe-bottom absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-surface p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-semibold">Filters</h2><button onClick={() => setFilterOpen(false)} aria-label="Close filters"><X/></button></div>{filterControls}<button onClick={() => setFilterOpen(false)} className="mt-4 w-full rounded-lg bg-primary px-4 font-semibold text-white">Show results</button></div></div>}
+    {globalSearchOpen && <GlobalEventSearch
+      open={globalSearchOpen}
+      events={globalSearchEvents}
+      timezone={timezone}
+      loading={searchCatalogLoading}
+      error={searchCatalogError}
+      online={online}
+      onClose={() => setGlobalSearchOpen(false)}
+      onRetry={() => void loadSearchCatalog()}
+      onOpen={(item) => {
+        setGlobalSearchOpen(false);
+        void startEdit(item.source as Appointment | AppointmentOccurrence);
+      }}
+    />}
     {undo && <div className="mobile-undo-offset safe-bottom fixed left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-foreground px-4 py-3 text-background shadow-xl" role="status"><span>{undo.label}</span><button type="button" onClick={() => void undoLastAction()} className="rounded-md border border-background px-3">Undo</button></div>}
 
     {open && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={editing ? "Edit appointment" : "Create appointment"}><form onSubmit={save} className="mx-auto max-w-2xl rounded-xl bg-surface p-5 shadow-xl sm:p-7">
       <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold">{editing ? "Appointment details" : "New appointment"}</h2>{editScope === "series" && <p className="text-sm text-muted">Editing the entire recurring series</p>}{editScope === "occurrence" && <p className="text-sm text-muted">Editing this occurrence only</p>}</div><button type="button" onClick={() => setOpen(false)} aria-label="Close"><X/></button></div>
+      {draftHint && <p role="status" className="mt-4 rounded-lg bg-background p-3 text-sm text-muted">{draftHint}</p>}
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2">Title<input required maxLength={180} value={draft.title} onChange={(e) => setDraft({...draft,title:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
         <label className="sm:col-span-2">Category<select required value={draft.category_id} onChange={(e) => setDraft({...draft,category_id:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3">{categories.filter((item) => !item.hidden || item.id === draft.category_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

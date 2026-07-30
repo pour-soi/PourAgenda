@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 export const previewDate = "2026-07-29";
 
-const appointment = (
+export const previewAppointment = (
   id: string,
   title: string,
   categoryId: string,
@@ -43,12 +43,12 @@ const appointment = (
 });
 
 export const previewAppointments = [
-  appointment("preview-1", "Quarterly planning with a deliberately long title", "focus", "2026-07-29T16:00:00.000Z", "2026-07-29T17:30:00.000Z"),
-  appointment("preview-2", "Design review", "personal", "2026-07-29T20:00:00.000Z", "2026-07-29T21:00:00.000Z"),
-  appointment("preview-3", "Personal day", "personal", "2026-07-30T07:00:00.000Z", "2026-07-31T07:00:00.000Z", true),
-  appointment("preview-4", "Roadmap notes", "planning", "2026-07-31T18:00:00.000Z", "2026-07-31T19:00:00.000Z"),
-  appointment("preview-5", "Project check-in", "focus", "2026-08-01T17:00:00.000Z", "2026-08-01T18:00:00.000Z"),
-  appointment("preview-6", "Prepare the week", "planning", "2026-08-03T15:00:00.000Z", "2026-08-03T16:00:00.000Z"),
+  previewAppointment("preview-1", "Quarterly planning with a deliberately long title", "focus", "2026-07-29T16:00:00.000Z", "2026-07-29T17:30:00.000Z"),
+  previewAppointment("preview-2", "Design review", "personal", "2026-07-29T20:00:00.000Z", "2026-07-29T21:00:00.000Z"),
+  previewAppointment("preview-3", "Personal day", "personal", "2026-07-30T07:00:00.000Z", "2026-07-31T07:00:00.000Z", true),
+  previewAppointment("preview-4", "Roadmap notes", "planning", "2026-07-31T18:00:00.000Z", "2026-07-31T19:00:00.000Z"),
+  previewAppointment("preview-5", "Project check-in", "focus", "2026-08-01T17:00:00.000Z", "2026-08-01T18:00:00.000Z"),
+  previewAppointment("preview-6", "Prepare the week", "planning", "2026-08-03T15:00:00.000Z", "2026-08-03T16:00:00.000Z"),
 ];
 
 export type CalendarMockState = {
@@ -64,6 +64,7 @@ export const createCalendarMockState = (): CalendarMockState => ({
 });
 
 export async function installCalendarLayoutMocks(page: Page, state: CalendarMockState) {
+  if (page.url() !== "about:blank") await page.waitForLoadState("networkidle");
   await page.unroute("**/rest/v1/appointments*");
   await page.unroute("**/rest/v1/appointment_shares*");
   await page.route("**/rest/v1/appointments*", async (route) => {

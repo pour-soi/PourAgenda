@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preferredCalendarScrollTime, responsiveCalendarView } from "./calendar-view";
+import { calendarWallTimeToInstant, preferredCalendarScrollTime, responsiveCalendarView } from "./calendar-view";
 
 describe("responsive calendar view selection", () => {
   it("uses a readable one-day week below the mobile breakpoint", () => {
@@ -35,5 +35,18 @@ describe("mobile time-axis starting position", () => {
     expect(preferredCalendarScrollTime(selected, [
       { start: new Date(2026, 6, 29, 0, 0).toISOString(), allDay: true },
     ], new Date(2026, 6, 28, 12, 0))).toBe("07:00:00");
+  });
+});
+
+describe("active-timezone calendar movement", () => {
+  it("converts the displayed wall time back to the active timezone instant", () => {
+    const displayed = new Date(2026, 6, 29, 16, 30);
+    expect(calendarWallTimeToInstant(displayed, "UTC", false).toISOString()).toBe("2026-07-29T16:30:00.000Z");
+    expect(calendarWallTimeToInstant(displayed, "Asia/Tokyo", false).toISOString()).toBe("2026-07-29T07:30:00.000Z");
+  });
+
+  it("preserves all-day calendar dates without a timezone shift", () => {
+    const displayed = new Date(2026, 6, 29, 0, 0);
+    expect(calendarWallTimeToInstant(displayed, "America/Los_Angeles", true).toISOString()).toBe("2026-07-29T00:00:00.000Z");
   });
 });

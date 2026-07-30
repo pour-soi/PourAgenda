@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { loginPage } from "./live-fixtures";
 
 test.beforeEach(({}, testInfo) => {
   test.skip(testInfo.project.name !== "desktop" || !process.env.PLAYWRIGHT_BASE_URL,
@@ -27,7 +26,7 @@ test("production public assets, headers, and reset callback are safe", async ({ 
 });
 
 test("production service worker serves the offline fallback", async ({ page, context }) => {
-  await loginPage(page);
+  await page.goto("/login");
   const controlled = await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
     return Boolean(navigator.serviceWorker.controller);
