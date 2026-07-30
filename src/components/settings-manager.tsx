@@ -49,7 +49,10 @@ export function SettingsManager({
   initialCategories: Category[];
 }) {
   const [name, setName] = useState(initialName);
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState({
+    ...initialSettings,
+    time_format: initialSettings.time_format === "24h" ? "24h" : "12h",
+  });
   const [categories, setCategories] = useState(initialCategories);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -237,7 +240,7 @@ export function SettingsManager({
           </label>
           <label className="block text-sm font-medium">Time format
             <select value={settings.time_format} onChange={(event) => setSettings({ ...settings, time_format: event.target.value })} className="mt-2 w-full rounded-lg border border-border bg-background px-3">
-              <option value="locale">System</option><option value="12h">12-hour</option><option value="24h">24-hour</option>
+              <option value="12h">12-hour</option><option value="24h">24-hour</option>
             </select>
           </label>
           <label className="block text-sm font-medium">Theme

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime } from "@/lib/date-format";
 
 export const metadata: Metadata = { title: "Shared appointment", robots: { index: false, follow: false } };
 
@@ -21,7 +22,7 @@ export default async function SharedAppointmentPage({ params }: { params: Promis
       <p className="text-xs font-semibold uppercase tracking-[.18em] text-muted">Shared appointment</p>
       <h1 className="mt-3 text-3xl font-semibold">{item.title}</h1>
       <dl className="mt-6 space-y-4">
-        <div><dt className="font-semibold">Date and time</dt><dd>{new Date(item.starts_at).toLocaleString([], { timeZone: item.timezone })} – {new Date(item.ends_at).toLocaleString([], { timeZone: item.timezone })} ({item.timezone})</dd></div>
+        <div><dt className="font-semibold">Date and time</dt><dd>{formatDateTime(item.starts_at, item.timezone, "12h")} – {formatDateTime(item.ends_at, item.timezone, "12h")} ({item.timezone})</dd></div>
         {item.location && <div><dt className="font-semibold">Location</dt><dd>{item.location}</dd></div>}
         {recurrence && <div><dt className="font-semibold">Recurrence</dt><dd>{recurrence}</dd></div>}
         {item.public_notes && <div><dt className="font-semibold">Notes</dt><dd className="whitespace-pre-wrap">{item.public_notes}</dd></div>}

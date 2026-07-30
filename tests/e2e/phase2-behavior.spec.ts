@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { cleanupTitles, createLiveAppointment, liveClient, loginPage } from "./live-fixtures";
 import { toLocalInput } from "../../src/lib/appointments";
+import { fillDateTimePicker } from "./date-time-picker-fixtures";
 
 test.use({ trace: "off" });
 test.setTimeout(60_000);
@@ -19,8 +20,8 @@ test("conflicts require an explicit override while cancelled rows are ignored", 
     await page.getByRole("button", { name: "New appointment" }).last().click();
     let dialog = page.getByRole("dialog", { name: "Create appointment" });
     await dialog.getByLabel("Title").fill(overrideTitle);
-    await dialog.getByLabel("Start").fill(toLocalInput(base.starts_at, timezone));
-    await dialog.getByRole("textbox", { name: "End", exact: true }).fill(toLocalInput(base.ends_at, timezone));
+    await fillDateTimePicker(dialog.getByLabel("Start"), toLocalInput(base.starts_at, timezone));
+    await fillDateTimePicker(dialog.getByRole("textbox", { name: "End", exact: true }), toLocalInput(base.ends_at, timezone));
     await dialog.getByRole("button", { name: "Save appointment" }).click();
     await expect(dialog.getByText("Time conflict")).toBeVisible();
     await expect(dialog.getByText(new RegExp(baseTitle))).toBeVisible();
@@ -35,8 +36,8 @@ test("conflicts require an explicit override while cancelled rows are ignored", 
     await page.getByRole("button", { name: "New appointment" }).last().click();
     dialog = page.getByRole("dialog", { name: "Create appointment" });
     await dialog.getByLabel("Title").fill(ignoredTitle);
-    await dialog.getByLabel("Start").fill(toLocalInput(base.starts_at, timezone));
-    await dialog.getByRole("textbox", { name: "End", exact: true }).fill(toLocalInput(base.ends_at, timezone));
+    await fillDateTimePicker(dialog.getByLabel("Start"), toLocalInput(base.starts_at, timezone));
+    await fillDateTimePicker(dialog.getByRole("textbox", { name: "End", exact: true }), toLocalInput(base.ends_at, timezone));
     await dialog.getByRole("button", { name: "Save appointment" }).click();
     await expect.poll(async () => {
       const { data } = await client.from("appointments").select("id").eq("title", ignoredTitle);

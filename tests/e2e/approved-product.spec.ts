@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createLiveAppointment, liveClient, loginPage } from "./live-fixtures";
+import { fillDateTimePicker } from "./date-time-picker-fixtures";
 
 test("event workflow is category-only with safe time defaults", async ({ page }) => {
   await loginPage(page);
@@ -15,12 +16,14 @@ test("event workflow is category-only with safe time defaults", async ({ page })
   const end = dialog.getByLabel("End");
   const startValue = await start.inputValue();
   const endValue = await end.inputValue();
-  expect(Date.parse(endValue) - Date.parse(startValue)).toBeGreaterThan(0);
-
-  await end.fill(`${startValue.slice(0, 10)}T23:00`);
-  await start.fill(`${startValue.slice(0, 10)}T08:00`);
-  await expect(end).toHaveValue(`${startValue.slice(0, 10)}T23:00`);
-  await end.fill(`${startValue.slice(0, 10)}T07:00`);
+  expect(startValue).toMatch(/^\d{2}\/\d{2}\/\d{4}/);
+  expect(endValue).toMatch(/^\d{2}\/\d{2}\/\d{4}/);
+  const [month, day, year] = startValue.slice(0, 10).split("/");
+  const dateKey = `${year}-${month}-${day}`;
+  await fillDateTimePicker(end, `${dateKey}T23:00`);
+  await fillDateTimePicker(start, `${dateKey}T08:00`);
+  await expect(end).toHaveValue(`${month}/${day}/${year} 11:00 PM`);
+  await fillDateTimePicker(end, `${dateKey}T07:00`);
   await expect(dialog.getByRole("alert")).toContainText("End must not be earlier");
 });
 

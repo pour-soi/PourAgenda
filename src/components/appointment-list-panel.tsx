@@ -6,6 +6,7 @@ import { appointmentCursor, mergeAppointmentPages, type AppointmentCursor, type 
 import { localInputToUtc } from "@/lib/appointments";
 import { expandAppointments } from "@/lib/recurrence";
 import type { Appointment, AppointmentKind, AppointmentOccurrence } from "@/types/domain";
+import { formatDateTime, type TimeFormat } from "@/lib/date-format";
 
 const PAGE_SIZE = 20;
 const stableId = (item: Appointment) =>
@@ -28,13 +29,14 @@ function dayBounds(timezone: string) {
 }
 
 export function AppointmentListPanel({
-  section, kind, category, search, timezone, refreshKey, onOpen,
+  section, kind, category, search, timezone, timeFormat, refreshKey, onOpen,
 }: {
   section: AppointmentListSection;
   kind: "all" | AppointmentKind;
   category: string;
   search: string;
   timezone: string;
+  timeFormat: TimeFormat;
   refreshKey: number;
   onOpen: (appointment: Appointment) => void;
 }) {
@@ -195,9 +197,9 @@ export function AppointmentListPanel({
     <div className="mt-4 space-y-2">
       {rows.map((item) => <button key={item.id} onClick={() => onOpen(item)} className="w-full rounded-lg border border-border p-4 text-left">
         <span className="font-semibold">{item.title}</span>
-        <span className="mt-1 block text-sm text-muted">{new Date(item.starts_at).toLocaleString([], { timeZone: timezone })}</span>
-        {section === "completed" && item.completed_at && <span className="mt-1 block text-xs">Completed {new Date(item.completed_at).toLocaleString([], { timeZone: timezone })}</span>}
-        {section === "cancelled" && item.cancelled_at && <span className="mt-1 block text-xs">Cancelled {new Date(item.cancelled_at).toLocaleString([], { timeZone: timezone })}</span>}
+        <span className="mt-1 block text-sm text-muted">{formatDateTime(item.starts_at, timezone, timeFormat)}</span>
+        {section === "completed" && item.completed_at && <span className="mt-1 block text-xs">Completed {formatDateTime(item.completed_at, timezone, timeFormat)}</span>}
+        {section === "cancelled" && item.cancelled_at && <span className="mt-1 block text-xs">Cancelled {formatDateTime(item.cancelled_at, timezone, timeFormat)}</span>}
       </button>)}
     </div>
     {!loading && !error && rows.length > 0 && (hasMore

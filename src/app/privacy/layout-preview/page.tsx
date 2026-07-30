@@ -9,6 +9,7 @@ export default function LayoutPreviewPage() {
       email="Private local preview"
       userId="layout-preview"
       timezone="UTC"
+      timeFormat="12h"
       defaultReminders={[10]}
       categories={[
         { id: "focus", name: "Focus", color: "#375f52", hidden: false },

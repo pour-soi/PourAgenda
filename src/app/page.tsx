@@ -9,11 +9,12 @@ export default async function Home() {
   const userId = typeof data?.claims?.sub === "string" ? data.claims.sub : "";
   if (!userId) redirect("/login");
   const [{ data: settings }, { data: categories }] = await Promise.all([
-    supabase.from("user_settings").select("timezone,default_duration_minutes,default_reminder_minutes").eq("user_id", userId).single(),
+    supabase.from("user_settings").select("timezone,time_format,default_duration_minutes,default_reminder_minutes").eq("user_id", userId).single(),
     supabase.from("categories").select("id,name,color,hidden").eq("user_id", userId).order("name"),
   ]);
   return <AgendaShell email={email} userId={userId}
     timezone={settings?.timezone ?? "UTC"}
+    timeFormat={settings?.time_format === "24h" ? "24h" : "12h"}
     defaultReminders={settings?.default_reminder_minutes ?? []}
     categories={categories ?? []} />;
 }

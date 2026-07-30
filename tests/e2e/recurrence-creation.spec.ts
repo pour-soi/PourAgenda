@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { liveClient, localInput, loginPage } from "./live-fixtures";
+import { fillDateTimePicker } from "./date-time-picker-fixtures";
 
 test.use({ trace: "off" });
 test.setTimeout(90_000);
@@ -16,15 +17,15 @@ async function createSeries(
   start.setHours(10, 0, 0, 0);
   const end = new Date(start.getTime() + 3600_000);
   await dialog.getByLabel("Title").fill(title);
-  await dialog.getByLabel("Start").fill(localInput(start.toISOString()));
-  await dialog.getByRole("textbox", { name: "End", exact: true }).fill(localInput(end.toISOString()));
+  await fillDateTimePicker(dialog.getByLabel("Start"), localInput(start.toISOString()));
+  await fillDateTimePicker(dialog.getByRole("textbox", { name: "End", exact: true }), localInput(end.toISOString()));
   await dialog.getByLabel("Repeat pattern").selectOption(pattern);
   if (pattern === "weekly-n") await dialog.getByLabel("Repeat every weeks").fill("2");
   await dialog.getByLabel("Repeat ending").selectOption(ending);
   if (ending === "date") {
     const until = new Date(start);
     until.setDate(until.getDate() + (pattern === "monthly" ? 70 : 28));
-    await dialog.getByLabel("Repeat end date").fill(until.toISOString().slice(0, 10));
+    await fillDateTimePicker(dialog.getByLabel("Repeat end date"), until.toISOString().slice(0, 10));
   }
   const expected = pattern === "monthly" ? "Monthly" : pattern === "weekly-n" ? "Every 2 weeks" : "Weekly";
   await expect(dialog.getByText(new RegExp(`${expected}.*${ending === "never" ? "never ends" : "until"}`))).toBeVisible();

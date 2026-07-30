@@ -125,15 +125,15 @@ test.describe("Phase 1 personal productivity foundation", () => {
     await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
     const editor = page.getByRole("dialog", { name: "Create appointment" });
     await expect(editor.getByLabel("Title")).toHaveValue("Dentist");
-    await expect(editor.getByLabel("Start")).toHaveValue("2026-07-30T14:00");
-    await expect(editor.getByLabel("End")).toHaveValue("2026-07-30T15:00");
+    await expect(editor.getByLabel("Start")).toHaveValue("07/30/2026 2:00 PM");
+    await expect(editor.getByLabel("End")).toHaveValue("07/30/2026 3:00 PM");
     await expect(editor).toContainText("Review before saving");
     await editor.getByRole("button", { name: "Close" }).click();
 
     await quickAdd.fill("Coffee Saturday");
     await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
     await expect(editor.getByLabel("Title")).toHaveValue("Coffee");
-    await expect(editor.getByLabel("Start")).toHaveValue(/^2026-08-01T/);
+    await expect(editor.getByLabel("Start")).toHaveValue(/^08\/01\/2026 /);
     await expect(editor).toContainText("Date recognized. Choose a time before saving.");
   });
 

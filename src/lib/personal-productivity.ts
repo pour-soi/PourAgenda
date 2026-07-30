@@ -1,4 +1,5 @@
 import { localInputToUtc, toLocalInput } from "@/lib/appointments";
+import { formatTime as formatClockTime, type TimeFormat } from "@/lib/date-format";
 
 export type ProductivityEvent = {
   id: string;
@@ -40,7 +41,7 @@ export function dayKind(dateKey: string, timezone: string, now = new Date()): Da
 export function selectedDateHeading(dateKey: string, timezone: string, now = new Date()) {
   const kind = dayKind(dateKey, timezone, now);
   const date = new Date(`${dateKey}T12:00:00.000Z`);
-  const fullDate = new Intl.DateTimeFormat("en", {
+  const fullDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "UTC",
     weekday: "long",
     month: "long",
@@ -153,14 +154,6 @@ export function nextEventForDay(
   };
 }
 
-function formatTime(timestamp: number, timezone: string) {
-  return new Intl.DateTimeFormat("en", {
-    timeZone: timezone,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(timestamp));
-}
-
 function localBoundary(dateKey: string, minutes: number, timezone: string) {
   const hour = Math.floor(minutes / 60).toString().padStart(2, "0");
   const minute = (minutes % 60).toString().padStart(2, "0");
@@ -172,6 +165,7 @@ export function freeTimeSummary(
   dateKey: string,
   timezone: string,
   now = new Date(),
+  timeFormat: TimeFormat = "12h",
 ): string | null {
   const kind = dayKind(dateKey, timezone, now);
   if (kind === "past") return null;
@@ -190,7 +184,7 @@ export function freeTimeSummary(
   }
   if (kind === "today" && cursor < relevant[0].start
       && relevant[0].start - cursor >= MIN_FREE_BLOCK_MINUTES * 60_000) {
-    return `Free until ${formatTime(relevant[0].start, timezone)}`;
+    return `Free until ${formatClockTime(new Date(relevant[0].start), timezone, timeFormat)}`;
   }
   const gaps: Interval[] = [];
   let gapStart = cursor;
@@ -207,10 +201,10 @@ export function freeTimeSummary(
   if (kind === "today") {
     const first = gaps[0];
     if (first.end === windowEnd) return "Free for the rest of today";
-    return `Next free block: ${formatTime(first.start, timezone)}–${formatTime(first.end, timezone)}`;
+    return `Next free block: ${formatClockTime(new Date(first.start), timezone, timeFormat)}–${formatClockTime(new Date(first.end), timezone, timeFormat)}`;
   }
   const largest = gaps.slice().sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
-  return `Largest free block: ${formatTime(largest.start, timezone)}–${formatTime(largest.end, timezone)}`;
+  return `Largest free block: ${formatClockTime(new Date(largest.start), timezone, timeFormat)}–${formatClockTime(new Date(largest.end), timezone, timeFormat)}`;
 }
 
 export type QuickAddResult = {

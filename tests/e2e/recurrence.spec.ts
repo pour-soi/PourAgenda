@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { liveClient, loginPage } from "./live-fixtures";
+import { fillDateTimePicker } from "./date-time-picker-fixtures";
 
 test.use({ trace: "off" });
 test.setTimeout(90_000);
@@ -19,7 +20,7 @@ test("daily series supports occurrence exceptions, cancellation, series concurre
     await dialog.getByLabel("Repeat pattern").selectOption("daily");
     await dialog.getByLabel("Repeat ending").selectOption("date");
     const end = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
-    await dialog.getByLabel("Repeat end date").fill(end);
+    await fillDateTimePicker(dialog.getByLabel("Repeat end date"), end);
     await dialog.getByRole("button", { name: "Save appointment" }).click();
     await expect(dialog).toBeHidden();
 

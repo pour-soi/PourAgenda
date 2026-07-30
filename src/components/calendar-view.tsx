@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { DayExperience } from "@/components/day-experience";
 import { localInputToUtc, toLocalInput } from "@/lib/appointments";
 import { dayKind, zonedDateKey } from "@/lib/personal-productivity";
+import type { TimeFormat } from "@/lib/date-format";
 
 declare global {
   interface Window {
@@ -63,10 +64,10 @@ const compactCalendarTitle = (view: Pick<DatesSetArg["view"], "type" | "title" |
   if (view.type === "dayGridMonth") return view.title;
   if (view.type === "listWeek") {
     const end = new Date(view.currentEnd.getTime() - 864e5);
-    const format = (date: Date) => date.toLocaleDateString([], { month: "short", day: "numeric" });
+    const format = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     return `${format(view.currentStart)} – ${format(end)}`;
   }
-  return view.currentStart.toLocaleDateString([], {
+  return view.currentStart.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -115,6 +116,7 @@ export default function CalendarView({
   onMove,
   onCreateForDate,
   timezone,
+  timeFormat,
 }: {
   events: CalendarEvent[];
   dataLoadedAt: number;
@@ -125,6 +127,7 @@ export default function CalendarView({
   onMove: (id: string, start: Date, end: Date, revert: () => void) => void;
   onCreateForDate: (dateKey: string) => void;
   timezone: string;
+  timeFormat: TimeFormat;
 }) {
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useSyncExternalStore(subscribeToMobileWidth, getMobileWidth, getServerMobileWidth);
@@ -261,6 +264,7 @@ export default function CalendarView({
           events={productivityEvents}
           dateKey={selectedDateKey}
           timezone={timezone}
+          timeFormat={timeFormat}
           onOpen={onOpen}
           onCreate={onCreateForDate}
           onReturnMonth={() => changeView("dayGridMonth")}
@@ -271,6 +275,10 @@ export default function CalendarView({
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView={initialView}
+          locale="en-US"
+          firstDay={0}
+          eventTimeFormat={{ hour: timeFormat === "24h" ? "2-digit" : "numeric", minute: "2-digit", hour12: timeFormat === "12h" }}
+          slotLabelFormat={{ hour: timeFormat === "24h" ? "2-digit" : "numeric", minute: "2-digit", hour12: timeFormat === "12h" }}
           views={{
             [MOBILE_WEEK_VIEW]: {
               type: "timeGrid",

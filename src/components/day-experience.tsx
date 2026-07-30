@@ -9,15 +9,11 @@ import {
   selectedDateHeading,
   type ProductivityEvent,
 } from "@/lib/personal-productivity";
+import { formatTime, type TimeFormat } from "@/lib/date-format";
 
-function eventTime(event: ProductivityEvent, timezone: string) {
+function eventTime(event: ProductivityEvent, timezone: string, timeFormat: TimeFormat) {
   if (event.allDay) return "All day";
-  const formatter = new Intl.DateTimeFormat("en", {
-    timeZone: timezone,
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${formatter.format(new Date(event.start))}–${formatter.format(new Date(event.end))}`;
+  return `${formatTime(event.start, timezone, timeFormat)}–${formatTime(event.end, timezone, timeFormat)}`;
 }
 
 function useMinuteClock() {
@@ -41,6 +37,7 @@ export function DayExperience({
   events,
   dateKey,
   timezone,
+  timeFormat,
   onOpen,
   onCreate,
   onReturnMonth,
@@ -48,6 +45,7 @@ export function DayExperience({
   events: ProductivityEvent[];
   dateKey: string;
   timezone: string;
+  timeFormat: TimeFormat;
   onOpen: (id: string) => void;
   onCreate: (dateKey: string) => void;
   onReturnMonth: () => void;
@@ -57,7 +55,7 @@ export function DayExperience({
   const selectedEvents = useMemo(() => eventsForDate(events, dateKey, timezone), [dateKey, events, timezone]);
   const summary = useMemo(() => daySummary(events, dateKey, timezone), [dateKey, events, timezone]);
   const next = useMemo(() => nextEventForDay(events, dateKey, timezone, now), [dateKey, events, now, timezone]);
-  const freeTime = useMemo(() => freeTimeSummary(events, dateKey, timezone, now), [dateKey, events, now, timezone]);
+  const freeTime = useMemo(() => freeTimeSummary(events, dateKey, timezone, now, timeFormat), [dateKey, events, now, timeFormat, timezone]);
 
   return (
     <section className="day-experience" aria-labelledby="selected-day-heading">
@@ -82,7 +80,7 @@ export function DayExperience({
                 />
                 <span className="day-next-event-copy">
                   <strong>{next.event.title}</strong>
-                  <span>{eventTime(next.event, timezone)} · {next.event.category}</span>
+                  <span>{eventTime(next.event, timezone, timeFormat)} · {next.event.category}</span>
                 </span>
                 <span className="day-next-event-state">{next.label}</span>
               </button>
@@ -104,7 +102,7 @@ export function DayExperience({
           <section className="day-insight day-free-time" aria-labelledby="free-time-heading">
             <h3 id="free-time-heading">Free time</h3>
             <p>{freeTime}</p>
-            <span>7:00 AM–10:00 PM · gaps under 15m omitted</span>
+            <span>{timeFormat === "12h" ? "7:00 AM–10:00 PM" : "07:00–22:00"} · gaps under 15m omitted</span>
           </section>
         )}
       </div>

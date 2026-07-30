@@ -3,21 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { searchEvents, type SearchableEvent } from "@/lib/personal-productivity";
+import { formatDate, formatTime, type TimeFormat } from "@/lib/date-format";
 
-function resultDate(item: SearchableEvent, timezone: string) {
+function resultDate(item: SearchableEvent, timezone: string, timeFormat: TimeFormat) {
   const date = new Date(item.startsAt);
-  const day = new Intl.DateTimeFormat("en", {
-    timeZone: timezone,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(date);
+  const day = formatDate(date, timezone);
   if (item.allDay) return `${day} · All day`;
-  const time = new Intl.DateTimeFormat("en", {
-    timeZone: timezone,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  const time = formatTime(date, timezone, timeFormat);
   return `${day} · ${time}`;
 }
 
@@ -25,6 +17,7 @@ export function GlobalEventSearch({
   open,
   events,
   timezone,
+  timeFormat,
   loading,
   error,
   online,
@@ -35,6 +28,7 @@ export function GlobalEventSearch({
   open: boolean;
   events: SearchableEvent[];
   timezone: string;
+  timeFormat: TimeFormat;
   loading: boolean;
   error: string;
   online: boolean;
@@ -150,7 +144,7 @@ export function GlobalEventSearch({
               <span className="search-result-dot" style={{ backgroundColor: item.categoryColor }} aria-hidden="true" />
               <span className="search-result-copy">
                 <strong>{item.title}</strong>
-                <span>{resultDate(item, timezone)} · {item.category}</span>
+                <span>{resultDate(item, timezone, timeFormat)} · {item.category}</span>
                 {item.context && <small>{item.context}</small>}
               </span>
             </button>

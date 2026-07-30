@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { localInputToUtc, toLocalInput } from "../../src/lib/appointments";
 import { createLiveAppointment, liveClient, localInput, loginPage } from "./live-fixtures";
+import { fillDateTimePicker } from "./date-time-picker-fixtures";
 
 test.use({ trace: "off" });
 test.setTimeout(120_000);
@@ -9,9 +10,9 @@ async function fillAppointment(page: Page, title: string, start: Date, end: Date
   await page.getByRole("button", { name: "New appointment" }).last().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Title").fill(title);
-  await dialog.getByLabel("Start").fill(timezone ? toLocalInput(start.toISOString(), timezone) : localInput(start.toISOString()));
-  await dialog.getByRole("textbox", { name: "End", exact: true })
-    .fill(timezone ? toLocalInput(end.toISOString(), timezone) : localInput(end.toISOString()));
+  await fillDateTimePicker(dialog.getByLabel("Start"), timezone ? toLocalInput(start.toISOString(), timezone) : localInput(start.toISOString()));
+  await fillDateTimePicker(dialog.getByRole("textbox", { name: "End", exact: true }),
+    timezone ? toLocalInput(end.toISOString(), timezone) : localInput(end.toISOString()));
   return dialog;
 }
 
@@ -78,7 +79,7 @@ test("new recurring series detects one-time and recurring conflicts caused by la
     const dialog = await fillAppointment(page, `${prefix} candidate series`, start, end);
     await dialog.getByLabel("Repeat pattern").selectOption("weekly");
     await dialog.getByLabel("Repeat ending").selectOption("date");
-    await dialog.getByLabel("Repeat end date").fill(new Date(start.getTime() + 14 * 864e5).toISOString().slice(0, 10));
+    await fillDateTimePicker(dialog.getByLabel("Repeat end date"), new Date(start.getTime() + 14 * 864e5).toISOString().slice(0, 10));
     await expect(dialog.getByText(/Weekly until/)).toBeVisible();
     await dialog.getByRole("button", { name: "Save appointment" }).click();
     await expect(dialog.getByText("Time conflict")).toBeVisible();
