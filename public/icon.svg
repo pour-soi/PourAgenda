@@ -1,0 +1,8 @@
+<!-- Original PourAgenda project artwork, released under the repository's MIT License. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="25" y="25" width="462" height="462" rx="90" fill="#f4f7f3" stroke="#1f5c4c" stroke-width="20"/>
+  <path d="M25 115a90 90 0 0 1 90-90h282a90 90 0 0 1 90 90v75H25z" fill="#2f6959"/>
+  <rect x="125" y="8" width="53" height="102" rx="26" fill="#f4f7f3" stroke="#dce6e0" stroke-width="3"/>
+  <rect x="335" y="8" width="53" height="102" rx="26" fill="#f4f7f3" stroke="#dce6e0" stroke-width="3"/>
+  <path d="m138 330 75 75 165-180" fill="none" stroke="#25705c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

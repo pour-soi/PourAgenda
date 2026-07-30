@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Copy this file to wrangler.jsonc, then choose a unique Worker name.
+  "name": "your-pouragenda-worker",
+  "workers_dev": true,
+  "preview_urls": false,
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "observability": {
+    "enabled": false
+  }
+}

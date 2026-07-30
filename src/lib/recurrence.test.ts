@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+import { expandAppointments, findRecurringConflicts, recurrenceSummary } from "./recurrence";
+import type { Appointment } from "@/types/domain";
+
+const series = (overrides: Partial<Appointment> = {}): Appointment => ({
+  id: "series", user_id: "user", category_id: "category", title: "Standup", kind: "work",
+  starts_at: "2026-03-06T17:00:00.000Z", ends_at: "2026-03-06T18:00:00.000Z",
+  intended_local_start: "2026-03-06 09:00:00", intended_local_end: "2026-03-06 10:00:00",
+  timezone: "America/Los_Angeles", all_day: false, location: null, phone: null, email: null,
+  public_notes: null, private_notes: null, status: "confirmed", archived: false,
+  recurrence_frequency: "daily", recurrence_interval: 1, recurrence_until: null, recurrence_count: null,
+  series_id: null, original_occurrence_start: null, completed_at: null, cancelled_at: null,
+  created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", ...overrides,
+} as Appointment);
+const expand = (rows: Appointment[], start = "2026-03-01T00:00:00Z", end = "2026-04-01T00:00:00Z", max?: number) =>
+  expandAppointments(rows, start, end, max);
+
+describe("bounded recurrence expansion", () => {
+  it("expands daily, weekly, monthly, and every-N-weeks deterministically", () => {
+    expect(expand([series({ recurrence_count: 3 })])).toHaveLength(3);
+    expect(expand([series({ recurrence_frequency: "weekly", recurrence_count: 3 })]).map((x) => x.starts_at.slice(0, 10))).toEqual(["2026-03-06", "2026-03-13", "2026-03-20"]);
+    expect(expand([series({ recurrence_frequency: "monthly", recurrence_count: 2 })], "2026-03-01T00:00:00Z", "2026-05-01T00:00:00Z")).toHaveLength(2);
+    expect(expand([series({ recurrence_frequency: "weekly", recurrence_interval: 2, recurrence_count: 3 })], "2026-03-01T00:00:00Z", "2026-05-01T00:00:00Z")).toHaveLength(3);
+  });
+  it("honors end dates and bounds never-ending series", () => {
+    expect(expand([series({ recurrence_until: "2026-03-08" })])).toHaveLength(3);
+    expect(expand([series()], "2026-03-10T00:00:00Z", "2026-03-13T00:00:00Z")).toHaveLength(3);
+  });
+  it("substitutes modified exceptions and excludes cancelled exceptions without duplicates", () => {
+    const original = "2026-03-07T17:00:00.000Z";
+    const modified = series({ id: "exception", recurrence_frequency: null, recurrence_interval: null,
+      series_id: "series", original_occurrence_start: original, title: "Moved", starts_at: "2026-03-07T20:00:00.000Z", ends_at: "2026-03-07T21:00:00.000Z" });
+    const cancelled = series({ id: "cancelled", recurrence_frequency: null, recurrence_interval: null,
+      series_id: "series", original_occurrence_start: "2026-03-08T16:00:00.000Z", status: "cancelled" });
+    const rows = expand([series({ recurrence_count: 4 }), modified, cancelled]);
+    expect(rows.map((x) => x.title).filter((x) => x === "Moved")).toHaveLength(1);
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((x) => x.occurrence_id)).size).toBe(3);
+  });
+  it("handles boundary and empty ranges", () => {
+    expect(expand([series({ recurrence_count: 1 })], "2026-03-06T18:00:00Z", "2026-03-07T00:00:00Z")).toHaveLength(0);
+    expect(expand([series()], "2026-03-02T00:00:00Z", "2026-03-01T00:00:00Z")).toEqual([]);
+  });
+  it("guards maximum output", () => {
+    expect(() => expand([series()], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z", 2)).toThrow("safety limit");
+  });
+  it("preserves weekly and monthly wall time through spring and fall DST", () => {
+    const spring = expand([series({ recurrence_frequency: "weekly", recurrence_count: 3 })]);
+    expect(spring.map((x) => x.starts_at.slice(11, 16))).toEqual(["17:00", "16:00", "16:00"]);
+    const fall = expand([series({ recurrence_frequency: "monthly", recurrence_count: 3, starts_at: "2026-09-01T16:00:00Z",
+      ends_at: "2026-09-01T17:00:00Z", intended_local_start: "2026-09-01 09:00:00" })], "2026-09-01T00:00:00Z", "2026-12-02T00:00:00Z");
+    expect(fall.map((x) => x.starts_at.slice(11, 16))).toEqual(["16:00", "16:00", "17:00"]);
+  });
+  it("preserves all-day dates and documents summaries", () => {
+    const rows = expand([series({ all_day: true, starts_at: "2026-03-06T08:00:00Z", ends_at: "2026-03-07T08:00:00Z", recurrence_count: 2 })]);
+    expect(rows.map((x) => x.starts_at.slice(0, 10))).toEqual(["2026-03-06", "2026-03-07"]);
+    expect(recurrenceSummary(series({ recurrence_frequency: "weekly", recurrence_interval: 2 }))).toBe("Every 2 weeks, never ends");
+  });
+  it("detects one-time, recurring, modified, and DST occurrence conflicts but ignores cancellation and adjacency", () => {
+    const candidate = series({ id: "candidate", recurrence_frequency: "weekly", recurrence_count: 3 });
+    const oneTime = series({ id: "one", recurrence_frequency: null, recurrence_interval: null,
+      starts_at: "2026-03-13T16:30:00Z", ends_at: "2026-03-13T17:30:00Z" });
+    expect(findRecurringConflicts([candidate], [oneTime], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z")).toHaveLength(1);
+    const adjacent = { ...oneTime, starts_at: "2026-03-13T17:00:00Z", ends_at: "2026-03-13T18:00:00Z" };
+    expect(findRecurringConflicts([candidate], [adjacent], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z")).toHaveLength(0);
+    const cancelled = { ...oneTime, status: "cancelled" as const };
+    expect(findRecurringConflicts([candidate], [cancelled], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z")).toHaveLength(0);
+    const recurring = series({ id: "other", recurrence_frequency: "daily", recurrence_count: 10,
+      starts_at: "2026-03-06T17:30:00Z", ends_at: "2026-03-06T18:30:00Z", intended_local_start: "2026-03-06 09:30:00" });
+    expect(findRecurringConflicts([candidate], [recurring], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z").length).toBeGreaterThan(1);
+  });
+});
