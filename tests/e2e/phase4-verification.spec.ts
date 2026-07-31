@@ -67,6 +67,127 @@ test("reminder preferences and appointment overrides persist with real permissio
   }
 });
 
+test("category delete preserves linked appointments with replacement selection", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One live category reassignment flow is sufficient in desktop Chromium.");
+  const client = await liveClient("A");
+  const marker = `Category delete ${Date.now()}`;
+  const userId = (await client.auth.getUser()).data.user!.id;
+  const unusedName = `${marker} Unused`;
+  const sourceName = `${marker} Source`;
+  const appointmentTitle = `${marker} Appointment`;
+  const [unused, source, replacement] = await Promise.all([
+    client.from("categories").insert({ user_id: userId, name: unusedName, color: "#667168", hidden: false }).select("id,name").single(),
+    client.from("categories").insert({ user_id: userId, name: sourceName, color: "#2F6959", hidden: false }).select("id,name").single(),
+    client.from("categories").insert({ user_id: userId, name: `${marker} Replacement`, color: "#A26068", hidden: false }).select("id,name").single(),
+  ]);
+  if (unused.error || source.error || replacement.error || !unused.data || !source.data || !replacement.data) {
+    await Promise.all([
+      client.from("categories").delete().eq("user_id", userId).like("name", `${marker}%`),
+      client.auth.signOut(),
+    ]);
+    throw new Error("Live category setup failed.");
+  }
+  const appointment = await createLiveAppointment(client, appointmentTitle, { category_id: source.data.id });
+  let rpcRequests = 0;
+  let releaseFirstRequest = false;
+  await page.route("**/rest/v1/rpc/move_category_appointments_and_delete", async (route) => {
+    rpcRequests += 1;
+    if (rpcRequests === 1) {
+      while (!releaseFirstRequest) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+    await route.continue();
+  });
+
+  try {
+    await loginPage(page);
+    await page.goto("/settings");
+    const unusedDelete = page.getByRole("button", { name: `Delete ${unusedName}` });
+    await expect(unusedDelete).toBeVisible();
+    await unusedDelete.click();
+    await expect(page.getByRole("dialog", { name: `Delete category "${unusedName}"` })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `Delete ${unusedName}` })).toHaveCount(0);
+
+    const sourceDelete = page.getByRole("button", { name: `Delete ${sourceName}` });
+    await sourceDelete.click();
+    const dialog = page.getByRole("dialog", { name: `Delete category "${sourceName}"` });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(`This category is currently used by 1 appointments.`)).toBeVisible();
+    const replacementOptions = await dialog.getByRole("combobox", { name: /replacement category/i }).locator("option").allTextContents();
+    expect(replacementOptions).not.toContain(sourceName);
+    await dialog.getByRole("combobox", { name: /replacement category/i }).selectOption({ label: replacement.data.name });
+    const moveDelete = dialog.getByRole("button", { name: "Move & Delete" });
+    await moveDelete.click();
+    await expect(moveDelete).toBeDisabled();
+    await expect.poll(() => rpcRequests).toBe(1);
+    const requestsAfterClick = rpcRequests;
+    await moveDelete.click({ force: true }).catch(() => null);
+    expect(rpcRequests).toBe(requestsAfterClick);
+    releaseFirstRequest = true;
+    await expect.poll(() => rpcRequests).toBe(1);
+    expect(rpcRequests).toBe(1);
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("button", { name: `Delete ${sourceName}` })).toHaveCount(0);
+
+    const appointmentRow = await client.from("appointments").select("category_id").eq("id", appointment.id).single();
+    expect(appointmentRow.data?.category_id).toBe(replacement.data.id);
+    const sourceCategory = await client.from("categories").select("id").eq("id", source.data.id).maybeSingle();
+    expect(sourceCategory.data).toBeNull();
+    await page.goto("/");
+    await expect(page.getByText(appointmentTitle, { exact: true }).first()).toBeVisible();
+    await expect(rpcRequests).toBe(1);
+    await page.goto("/settings");
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("button", { name: `Delete ${sourceName}` })).toHaveCount(0);
+
+  } finally {
+    await page.unroute("**/rest/v1/rpc/move_category_appointments_and_delete");
+    await client.from("appointments").delete().eq("title", appointmentTitle);
+    await client.from("categories").delete().like("name", `${marker}%`);
+    await client.auth.signOut();
+  }
+});
+
+test("atomic category replacement move fails safely when replacement category is invalid", async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "RPC atomicity verification runs once in desktop Chromium.");
+  const client = await liveClient("A");
+  const marker = `Category atomic ${Date.now()}`;
+  const userId = (await client.auth.getUser()).data.user!.id;
+  const [sourceCategory, replacementCategory] = await Promise.all([
+    client.from("categories").insert({ user_id: userId, name: `${marker} Source`, color: "#8B5CF6", hidden: false }).select("id").single(),
+    client.from("categories").insert({ user_id: userId, name: `${marker} Replacement`, color: "#10B981", hidden: false }).select("id").single(),
+  ]);
+  if (!sourceCategory.data || sourceCategory.error || !replacementCategory.data || replacementCategory.error) {
+    await client.from("categories").delete().like("name", `${marker}%`);
+    await client.auth.signOut();
+    throw new Error("Atomic test category setup failed.");
+  }
+
+  const appointment = await createLiveAppointment(client, `${marker} Appointment`, { category_id: sourceCategory.data.id });
+  const replacementMissing = crypto.randomUUID();
+  try {
+    const result = await client.rpc("move_category_appointments_and_delete", {
+      source_category_id: sourceCategory.data.id,
+      replacement_category_id: replacementMissing,
+    });
+    expect(result.error).toBeTruthy();
+
+    const sourceAppointment = await client.from("appointments").select("category_id").eq("id", appointment.id).single();
+    expect(sourceAppointment.data?.category_id).toBe(sourceCategory.data.id);
+    const sourceStillExists = await client.from("categories").select("id").eq("id", sourceCategory.data.id).single();
+    expect(sourceStillExists.data).toBeTruthy();
+    const replacementStillExists = await client.from("categories").select("id").eq("id", replacementCategory.data.id).single();
+    expect(replacementStillExists.data).toBeTruthy();
+  } finally {
+    await Promise.all([
+      client.from("appointments").delete().eq("id", appointment.id),
+      client.from("categories").delete().in("name", [`${marker} Source`, `${marker} Replacement`]),
+    ]);
+    await client.auth.signOut();
+  }
+});
+
 test("live exports download owner data with safe CSV, JSON, and ICS", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Download verification runs once in desktop Chromium.");
   const a = await liveClient("A"), b = await liveClient("B");

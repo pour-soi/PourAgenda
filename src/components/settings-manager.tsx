@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,11 @@ type SettingsRow = {
   default_reminder_minutes: number[];
 };
 type Category = { id: string; name: string; color: string; hidden: boolean };
+type CategoryReplacement = {
+  category: Category;
+  appointmentCount: number;
+  replacementCategoryId: string;
+};
 const TIMEZONES = [
   ["Pacific Time", "America/Los_Angeles"],
   ["Mountain Time", "America/Denver"],
@@ -56,6 +61,8 @@ export function SettingsManager({
   const [categories, setCategories] = useState(initialCategories);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [categoryReplacement, setCategoryReplacement] = useState<CategoryReplacement | null>(null);
+  const moveDeleteInProgress = useRef(false);
   const supabase = createClient();
   useEffect(() => {
     const detect = () => setSettings((current) => {
@@ -191,19 +198,91 @@ export function SettingsManager({
     setMessage(error ? friendlyDataError(error) : "Category updated.");
   }
 
-  async function deleteCategory(category: Category) {
-    if (!window.confirm(`Delete “${category.name}”? Categories in use cannot be deleted.`)) return;
+  async function removeCategory(category: Category, replacementCategoryId: string | null = null): Promise<boolean> {
+    if (replacementCategoryId) {
+      const moveAndDeleteResult = await supabase.rpc("move_category_appointments_and_delete", {
+        source_category_id: category.id,
+        replacement_category_id: replacementCategoryId,
+      });
+      if (moveAndDeleteResult.error) {
+        setMessage(friendlyDataError(moveAndDeleteResult.error));
+        return false;
+      }
+
+      setCategories((current) => current.filter((item) => item.id !== category.id));
+      setMessage("Category deleted.");
+      setCategoryReplacement(null);
+      return true;
+    }
+
+    setPending(true);
     const { error } = await supabase
       .from("categories")
       .delete()
       .eq("id", category.id)
       .eq("user_id", userId);
-    if (error) setMessage(friendlyDataError(error));
-    else {
-      setCategories((current) => current.filter((item) => item.id !== category.id));
-      setMessage("Category deleted.");
+    setPending(false);
+    if (error) {
+      setMessage(friendlyDataError(error));
+      return false;
+    }
+
+    setCategories((current) => current.filter((item) => item.id !== category.id));
+    setMessage("Category deleted.");
+    setCategoryReplacement(null);
+    return true;
+  }
+
+  async function deleteCategory(category: Category) {
+    setMessage("");
+    const usedResult = await supabase
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("category_id", category.id);
+    if (usedResult.error) return setMessage(friendlyDataError(usedResult.error));
+
+    const appointmentCount = usedResult.count ?? 0;
+    if (appointmentCount === 0) return removeCategory(category);
+
+    const replacementCategories = categories.filter((item) => item.id !== category.id);
+    if (!replacementCategories.length) {
+      setMessage("Create another category before deleting this one.");
+      return;
+    }
+
+    setCategoryReplacement({
+      category,
+      appointmentCount,
+      replacementCategoryId: replacementCategories[0].id,
+    });
+  }
+
+  async function confirmMoveAndDelete() {
+    if (pending || !categoryReplacement || moveDeleteInProgress.current) return;
+    moveDeleteInProgress.current = true;
+    setPending(true);
+    try {
+      const result = await removeCategory(categoryReplacement.category, categoryReplacement.replacementCategoryId);
+      if (!result) return;
+    } finally {
+      setPending(false);
+      moveDeleteInProgress.current = false;
     }
   }
+
+  function handleReplaceCategory(categoryId: string) {
+    setCategoryReplacement((current) => current ? { ...current, replacementCategoryId: categoryId } : null);
+  }
+
+  function cancelReplaceCategory() {
+    setCategoryReplacement(null);
+    setMessage("");
+  }
+
+  const replacementCategoryOptions = categoryReplacement
+    ? categories.filter((item) => item.id !== categoryReplacement.category.id)
+    : [];
 
   return <main className="min-h-dvh bg-background p-4 sm:p-8">
     <div className="mx-auto max-w-3xl">
@@ -285,6 +364,22 @@ export function SettingsManager({
           </div>)}
         </div>
       </section>
+      {categoryReplacement ? <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={`Delete category ${'"'}${categoryReplacement.category.name}${'"'}`}>
+        <div className="mx-auto mt-10 max-w-lg rounded-xl bg-surface p-5 sm:p-6">
+          <h2 className="text-lg font-semibold">Delete category {`"`}{categoryReplacement.category.name}{`"`}</h2>
+          <p className="mt-2 text-sm text-muted">This category is currently used by {categoryReplacement.appointmentCount} appointments.</p>
+          <label className="mt-4 block text-sm font-medium">Choose a replacement category:
+            <select value={categoryReplacement.replacementCategoryId} onChange={(event) => handleReplaceCategory(event.target.value)}
+              disabled={pending} className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2">
+              {replacementCategoryOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button type="button" onClick={cancelReplaceCategory} disabled={pending} className="rounded-lg border border-border px-3">Cancel</button>
+            <button type="button" onClick={() => void confirmMoveAndDelete()} disabled={pending} className="rounded-lg bg-primary px-3 font-semibold text-white">Move & Delete</button>
+          </div>
+        </div>
+      </div> : null}
     </div>
   </main>;
 }
