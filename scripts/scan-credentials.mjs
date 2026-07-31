@@ -9,6 +9,16 @@ const sourceIgnored = new Set([
 const artifactRoots = [".next", ".open-next", "playwright-report", "test-results"];
 const secretPattern = /(?:sb_secret_[a-z0-9_-]{16,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|eyJ[a-zA-Z0-9_-]{20,}\.eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,})/g;
 
+function isSafeLocalDevelopmentValue(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return (
+    /^(?:localhost|127\.0\.0\.1)$/.test(trimmed) ||
+    /^(?:http|https|ws|wss):\/\/(?:localhost|127\.0\.0\.1):54321(?:[/?#].*)?$/i.test(trimmed) ||
+    /^(?:localhost|127\.0\.0\.1):54321$/i.test(trimmed)
+  );
+}
+
 function parseEnvironment(file) {
   if (!fs.existsSync(file)) return {};
   return Object.fromEntries(
@@ -36,7 +46,7 @@ function filesUnder(directory, ignored = new Set()) {
 const appEnvironment = parseEnvironment(path.join(root, ".env.local"));
 const testEnvironment = parseEnvironment(path.join(root, ".env.rls-test"));
 const sourceValues = [...Object.values(appEnvironment), ...Object.values(testEnvironment)]
-  .filter((value) => value.length >= 8);
+  .filter((value) => value.length >= 8 && !isSafeLocalDevelopmentValue(value));
 const artifactValues = Object.entries(testEnvironment)
   .filter(([name, value]) => /PASSWORD|EMAIL/.test(name) && value.length >= 8)
   .map(([, value]) => value);
