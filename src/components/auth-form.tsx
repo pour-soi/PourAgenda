@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useSyncExternalStore } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -11,11 +11,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
-  const ready = useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
+  const ready = true;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,3 +87,4 @@ export function AuthForm({ mode }: { mode: Mode }) {
     </div>
   );
 }
+
