@@ -4,11 +4,22 @@ const developmentScriptPolicy =
   process.env.NODE_ENV === "production"
     ? "script-src 'self' 'unsafe-inline'"
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+const connectSources = [
+  "'self'",
+  "https://*.supabase.co",
+  "wss://*.supabase.co",
+  ...(process.env.NODE_ENV === "production" ? [] : [
+    "http://127.0.0.1:54321",
+    "http://localhost:54321",
+    "ws://127.0.0.1:54321",
+    "ws://localhost:54321",
+  ]),
+];
 
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+  `connect-src ${connectSources.join(" ")}`,
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
