@@ -170,6 +170,126 @@ Using `https://YOUR_DOMAIN`, verify:
 - public share expiry, revocation, and minimal disclosure;
 - test accounts, records, share tokens, browser auth state, and credentials are removed.
 
+## Troubleshooting
+
+### Callback URL mismatch
+
+Symptoms:
+
+- After clicking confirm/reset links, users see callback errors.
+- Email links open unexpected pages or refuse to continue.
+
+Likely cause:
+
+- Supabase callback URL settings do not exactly match your deployed origin and path.
+- Extra trailing slash, wrong protocol, or missing `next=` query parameter.
+
+Solution:
+
+- Open **Authentication → URL Configuration** in Supabase.
+- Ensure both callback URLs are exactly:
+  - `https://YOUR_DOMAIN/auth/confirm?next=/settings`
+  - `https://YOUR_DOMAIN/auth/callback?next=/reset-password`
+- For local testing, also keep:
+  - `http://localhost:3000/auth/confirm?next=/settings`
+  - `http://localhost:3000/auth/callback?next=/reset-password`
+- Save, then retry a full sign-up/login confirmation flow.
+
+### Login redirect issues
+
+Symptoms:
+
+- Login appears to succeed but returns to an empty page or 404.
+- Password reset flow appears to complete but does not return to app.
+
+Likely cause:
+
+- Wrong **Site URL** (production domain mismatch), outdated redirect target, or cookie/domain mismatch.
+
+Solution:
+
+- In Supabase **Authentication → URL Configuration**, set **Site URL** to:
+  - `http://localhost:3000` locally, or
+  - `https://YOUR_DOMAIN` in production.
+- Confirm callback URLs use the same origin as Site URL.
+- Confirm DNS and Cloudflare routes point to the same deployed Worker for that domain.
+
+### Missing environment variables
+
+Symptoms:
+
+- Startup errors about missing `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- Blank login screen or repeated redirect loops.
+
+Likely cause:
+
+- `.env.local` missing, not loaded, or containing old values.
+
+Solution:
+
+- Copy `.env.example` to `.env.local` and set both variables.
+- Confirm they match your Supabase dashboard values exactly.
+- Restart `pnpm dev` (or rebuild before deployment).
+- Do not use production values from another deployment.
+
+### Migration failures
+
+Symptoms:
+
+- `db push` fails, SQL editor returns syntax/permission errors, or next migration cannot run.
+
+Likely cause:
+
+- Migrations not applied in filename order.
+- Missing privileges in the target project.
+- Running an older migration against unexpected schema state.
+
+Solution:
+
+- Apply migrations strictly in filename order from `supabase/migrations`.
+- Verify database is owned by you and clean from prior partial attempts when safe.
+- Re-run failed migration after correcting prerequisite errors.
+- Use read-only verification SQL to confirm expected tables, roles, and policy state before adding real data.
+
+### Build failures
+
+Symptoms:
+
+- `pnpm build`, `pnpm preview`, or `pnpm deploy` exits with module, route, or compile errors.
+
+Likely cause:
+
+- Missing dependencies or stale `.open-next` build artifacts.
+- Environment not loaded for local preview.
+- Windows symlink constraints in local toolchain.
+
+Solution:
+
+- Run `pnpm install --frozen-lockfile`.
+- Re-run `pnpm lint`, `pnpm typecheck`, then `pnpm build`.
+- For preview/deploy issues on Windows, use WSL or Linux CI when native environment limitations appear.
+
+### Cloudflare deployment failures
+
+Symptoms:
+
+- Wrangler login/auth errors.
+- Permission denied on deploy.
+- Worker deploy succeeds but URL returns stale app or old assets.
+
+Likely cause:
+
+- Wrong Cloudflare account, duplicate Worker name, or stale `wrangler.jsonc`.
+- Missing `wrangler.jsonc` from `wrangler.example.jsonc`.
+- Missing authentication with Wrangler for target account.
+
+Solution:
+
+- Run `pnpm exec wrangler login` and confirm the expected account with `pnpm exec wrangler whoami`.
+- Ensure `wrangler.jsonc` is based on `wrangler.example.jsonc` and `name` is unique.
+- Confirm `preview_urls` and routes are exactly what your deployment requires.
+- Rebuild after deploy and clear stale browser cache before verifying production URL.
+
 ## 14. Private-instance option
 
 For a personal deployment:

@@ -53,6 +53,12 @@ The browser-visible Supabase project URL and publishable key identify the operat
 
 See [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [SUPABASE_SETUP.md](SUPABASE_SETUP.md), and the [self-hosting checklist](SELF_HOSTING_CHECKLIST.md).
 
+## Supported Deployment Targets
+
+- ✅ **Cloudflare** (supported): use the OpenNext Worker workflow described in this repository.
+- ⚠️ **Self-hosting** (supported): run your own Supabase project, own deployment account, and infrastructure.
+- ❌ **Vercel** (currently unsupported): this repository is documented and verified around Cloudflare Workers with OpenNext; Vercel is not currently supported or validated.
+
 ## Requirements
 
 - Node.js 20.9 or newer
@@ -113,6 +119,21 @@ Deployment uses your Cloudflare quota. No shared Worker, route, custom domain, o
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-visible | Publishable/legacy anon key protected by RLS |
 
 PourAgenda does not require a service-role key or database password at runtime.
+
+### Testing Environment Variables
+
+These variables are intended only for local development and test workflows. Do not use them in production environments:
+
+- `PLAYWRIGHT_BASE_URL`
+- `POURAGENDA_LAYOUT_PREVIEW`
+- `POURAGENDA_TEST_USER_A_EMAIL`
+- `POURAGENDA_TEST_USER_A_PASSWORD`
+- `POURAGENDA_TEST_USER_B_EMAIL`
+- `POURAGENDA_TEST_USER_B_PASSWORD`
+- `POURAGENDA_DELETION_TEST_EMAIL`
+- `POURAGENDA_DELETION_TEST_PASSWORD`
+
+They are read by Playwright or temporary verification scripts and should be omitted from production releases and public docs.
 
 ## Testing
 
