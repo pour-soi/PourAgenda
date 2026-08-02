@@ -160,6 +160,11 @@ describe("deterministic Quick Add", () => {
       status: "unsupported",
     });
   });
+  it("recognizes weekly phrases without silently completing a missing time", () => {
+    expect(parseQuickAdd("Meeting Aug 18 3pm", "UTC", now)).toMatchObject({ title: "Meeting", dateKey: "2026-08-18", time: "15:00", status: "complete" });
+    expect(parseQuickAdd("Dinner Sat 7pm", "UTC", now)).toMatchObject({ title: "Dinner", dateKey: "2026-08-01", time: "19:00", status: "complete" });
+    expect(parseQuickAdd("Every Tuesday WFH", "UTC", now)).toMatchObject({ title: "WFH", dateKey: "2026-08-04", recurrenceFrequency: "weekly", status: "partial" });
+  });
 });
 
 describe("event search", () => {

@@ -27,8 +27,10 @@ async function createSeries(
     until.setDate(until.getDate() + (pattern === "monthly" ? 70 : 28));
     await fillDateTimePicker(dialog.getByLabel("Repeat end date"), until.toISOString().slice(0, 10));
   }
-  const expected = pattern === "monthly" ? "Monthly" : pattern === "weekly-n" ? "Every 2 weeks" : "Weekly";
+  const expected = pattern === "monthly" ? "Repeats every month" : pattern === "weekly-n" ? "Repeats every 2 weeks" : "Repeats every";
   await expect(dialog.getByText(new RegExp(`${expected}.*${ending === "never" ? "never ends" : "until"}`))).toBeVisible();
+  await expect(dialog.getByText("Summary", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Next occurrences", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Save appointment" }).click();
   await expect(dialog).toBeHidden();
 }

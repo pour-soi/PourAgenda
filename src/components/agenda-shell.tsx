@@ -3,18 +3,18 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Archive, CalendarDays, Filter, List, Plus, RotateCcw, Search, Settings, Trash2, X } from "lucide-react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { AppointmentListPanel } from "@/components/appointment-list-panel";
 import { GlobalEventSearch } from "@/components/global-event-search";
 import { QuickAdd } from "@/components/quick-add";
 import { EnglishDateTimePicker, type TimeFormat } from "@/components/date-time-picker";
-import { formatDate, formatDateTime, formatTime } from "@/lib/date-format";
+import { formatDate, formatDateTime, formatTime, resolveTimeFormat, type TimeFormatPreference } from "@/lib/date-format";
 import { allDayEndToInput, allDayEndToUtc, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
 import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
-import { expandAppointments, findRecurringConflicts, recurrenceSummary } from "@/lib/recurrence";
+import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrenceSummary } from "@/lib/recurrence";
 import { REMINDER_OPTIONS, normalizeReminderMinutes, reminderTimes } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
 import type { Appointment, AppointmentOccurrence, RecurrenceFrequency } from "@/types/domain";
@@ -29,6 +29,9 @@ declare global {
   }
 }
 type Category = { id: string; name: string; color: string; hidden: boolean };
+const subscribeToSystemTimeFormat = () => () => undefined;
+const getSystemUses12Hour = () => new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12 !== false;
+const getServerUses12Hour = () => true;
 const contrastingText = (color: string) => {
   const [r, g, b] = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16));
   return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#17211d" : "#ffffff";
@@ -36,31 +39,35 @@ const contrastingText = (color: string) => {
 const localFieldMilliseconds = (value: string) => Date.parse(`${value}:00Z`);
 const shiftLocalField = (value: string, milliseconds: number) =>
   new Date(localFieldMilliseconds(value) + milliseconds).toISOString().slice(0, 16);
+const validDuration = (value: number) => Number.isInteger(value) && value >= 5 && value <= 1440 ? value : 60;
 type Draft = {
   title: string; category_id: string; starts_at: string; ends_at: string;
   all_day: boolean; location: string; public_notes: string; private_notes: string; recurrence_frequency: RecurrenceFrequency | "";
   recurrence_interval: number; recurrence_until: string;
   reminder_minutes: number[];
 };
-const blankDraft = (categoryId: string, timezone: string, reminders: number[]): Draft => {
+const blankDraft = (categoryId: string, timezone: string, reminders: number[], durationMinutes: number): Draft => {
   const start = new Date();
   start.setSeconds(0, 0);
-  const end = new Date(start.getTime() + 60 * 60_000);
+  const end = new Date(start.getTime() + validDuration(durationMinutes) * 60_000);
   return { title: "", category_id: categoryId, starts_at: toLocalInput(start.toISOString(), timezone),
     ends_at: toLocalInput(end.toISOString(), timezone), all_day: false, location: "",
     public_notes: "", private_notes: "", recurrence_frequency: "", recurrence_interval: 1,
     recurrence_until: "", reminder_minutes: reminders };
 };
 
-export function AgendaShell({ email, userId, timezone, timeFormat, defaultReminders, categories }: {
-  email: string; userId: string; timezone: string; timeFormat: TimeFormat; defaultReminders: number[]; categories: Category[];
+export function AgendaShell({ email, userId, timezone, timeFormatPreference, defaultDuration, defaultReminders, categories }: {
+  email: string; userId: string; timezone: string; timeFormatPreference: TimeFormatPreference | string; defaultDuration: number; defaultReminders: number[]; categories: Category[];
 }) {
+  const systemUses12Hour = useSyncExternalStore(subscribeToSystemTimeFormat, getSystemUses12Hour, getServerUses12Hour);
+  const timeFormat: TimeFormat = resolveTimeFormat(timeFormatPreference, systemUses12Hour);
+  const defaultDurationMinutes = validDuration(defaultDuration);
   const supabase = useMemo(() => createClient(), []);
   const [appointments, setAppointments] = useState<AppointmentOccurrence[]>([]);
   const [range, setRange] = useState({ start: new Date(0), end: new Date(864e5) });
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState<Draft>(() => blankDraft(categories[0]?.id ?? "", timezone, defaultReminders));
+  const [draft, setDraft] = useState<Draft>(() => blankDraft(categories[0]?.id ?? "", timezone, defaultReminders, defaultDurationMinutes));
   const [editing, setEditing] = useState<Appointment | AppointmentOccurrence | null>(null);
   const [editScope, setEditScope] = useState<"single" | "series" | "occurrence">("single");
   const [seriesParentId, setSeriesParentId] = useState<string | null>(null);
@@ -98,6 +105,8 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
   const calendarLoaded = useRef(false);
   const calendarLoadGeneration = useRef(0);
   const endOverridden = useRef(false);
+  const recurringChoiceRef = useRef<HTMLDivElement>(null);
+  const [recurringEditChoice, setRecurringEditChoice] = useState<{ item: Appointment | AppointmentOccurrence; trigger: HTMLElement | null } | null>(null);
   const updateRange = useCallback((start: Date, end: Date) => {
     setRange((current) => (
       current.start.getTime() === start.getTime() && current.end.getTime() === end.getTime()
@@ -225,7 +234,7 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
   }, [openGlobalSearch]);
 
   function startCreate(start?: Date, end?: Date, allDay = false) {
-    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
+    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders, defaultDurationMinutes);
     if (start && end) {
       next.starts_at = allDay ? start.toISOString().slice(0, 10) : toLocalInput(start.toISOString(), timezone);
       next.ends_at = allDay ? allDayEndToInput(end.toISOString()) : toLocalInput(end.toISOString(), timezone);
@@ -235,30 +244,28 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
     setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
   }
   function startCreateForDate(dateKey: string) {
-    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
+    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders, defaultDurationMinutes);
     next.starts_at = `${dateKey}T${next.starts_at.slice(11)}`;
-    next.ends_at = shiftLocalField(next.starts_at, 60 * 60_000);
+    next.ends_at = shiftLocalField(next.starts_at, defaultDurationMinutes * 60_000);
     endOverridden.current = false;
     setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
     setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
   }
   function startQuickAdd(result: QuickAddResult) {
-    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders);
+    const next = blankDraft(categories[0]?.id ?? "", timezone, defaultReminders, defaultDurationMinutes);
     next.title = result.title;
     if (result.dateKey) {
       const time = result.time ?? next.starts_at.slice(11);
       next.starts_at = `${result.dateKey}T${time}`;
-      next.ends_at = shiftLocalField(next.starts_at, 60 * 60_000);
+      next.ends_at = shiftLocalField(next.starts_at, defaultDurationMinutes * 60_000);
     }
+    next.recurrence_frequency = result.recurrenceFrequency ?? "";
     endOverridden.current = false;
     setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
     setAllowConflict(false); setStale(false); setDraftHint(result.explanation); setMessage(""); setOpen(true);
   }
-  async function startEdit(item: Appointment | AppointmentOccurrence) {
+  async function openAppointmentEditor(item: Appointment | AppointmentOccurrence, occurrenceScope: boolean) {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
-    const occurrenceScope = parentId
-      ? window.confirm("Edit this occurrence only?\n\nChoose Cancel to edit the entire recurring series.")
-      : false;
     const targetId = parentId && !occurrenceScope ? parentId : item.id;
     const latest = parentId && occurrenceScope && "is_generated_occurrence" in item && item.is_generated_occurrence
       ? { data: item }
@@ -281,6 +288,32 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
       reminder_minutes: current.reminder_minutes ?? [] });
     setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
   }
+  function startEdit(item: Appointment | AppointmentOccurrence) {
+    const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
+    if (!parentId) return void openAppointmentEditor(item, false);
+    if (recurringEditChoice) return;
+    setRecurringEditChoice({ item, trigger: document.activeElement as HTMLElement | null });
+  }
+  const closeRecurringEditChoice = useCallback(() => {
+    const trigger = recurringEditChoice?.trigger;
+    setRecurringEditChoice(null);
+    window.requestAnimationFrame(() => trigger?.focus());
+  }, [recurringEditChoice]);
+  useEffect(() => {
+    if (!recurringEditChoice) return;
+    const dialog = recurringChoiceRef.current;
+    const buttons = dialog?.querySelectorAll<HTMLElement>("button") ?? [];
+    buttons[0]?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeRecurringEditChoice(); return; }
+      if (event.key !== "Tab" || !buttons.length) return;
+      const first = buttons[0]; const last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    dialog?.addEventListener("keydown", keydown);
+    return () => dialog?.removeEventListener("keydown", keydown);
+  }, [closeRecurringEditChoice, recurringEditChoice]);
   const iso = (value: string, allDay: boolean, isEnd = false) => allDay && isEnd ? allDayEndToUtc(value) : localInputToUtc(value, timezone, allDay);
   async function save(event?: FormEvent, forceConflict = false) {
     event?.preventDefault();
@@ -631,6 +664,7 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
     />}
     {undo && <div className="mobile-undo-offset safe-bottom fixed left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-foreground px-4 py-3 text-background shadow-xl" role="status"><span>{undo.label}</span><button type="button" onClick={() => void undoLastAction()} className="rounded-md border border-background px-3">Undo</button></div>}
 
+    {recurringEditChoice && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><div ref={recurringChoiceRef} role="dialog" aria-modal="true" aria-labelledby="recurring-edit-title" aria-describedby="recurring-edit-description" className="w-full max-w-md rounded-xl bg-surface p-5 shadow-xl"><h2 id="recurring-edit-title" className="text-xl font-semibold">Edit recurring appointment</h2><div id="recurring-edit-description" className="mt-2 text-sm text-muted"><p>This appointment is part of a recurring series.</p><p>What would you like to edit?</p></div><div className="mt-5 grid gap-2"><button type="button" className="rounded-lg bg-primary px-4 py-3 font-semibold text-white" onClick={() => { const item=recurringEditChoice.item; setRecurringEditChoice(null); void openAppointmentEditor(item,true); }}>This appointment only</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={() => { const item=recurringEditChoice.item; setRecurringEditChoice(null); void openAppointmentEditor(item,false); }}>Entire series</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={closeRecurringEditChoice}>Cancel</button></div></div></div>}
     {open && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={editing ? "Edit appointment" : "Create appointment"}><form onSubmit={save} className="mx-auto max-w-2xl rounded-xl bg-surface p-5 shadow-xl sm:p-7">
       <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold">{editing ? "Appointment details" : "New appointment"}</h2>{editScope === "series" && <p className="text-sm text-muted">Editing the entire recurring series</p>}{editScope === "occurrence" && <p className="text-sm text-muted">Editing this occurrence only</p>}</div><button type="button" onClick={() => setOpen(false)} aria-label="Close"><X/></button></div>
       {draftHint && <p role="status" className="mt-4 rounded-lg bg-background p-3 text-sm text-muted">{draftHint}</p>}
@@ -638,7 +672,7 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
         <label className="sm:col-span-2">Title<input required maxLength={180} value={draft.title} onChange={(e) => setDraft({...draft,title:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
         <label className="sm:col-span-2">Category<select required value={draft.category_id} onChange={(e) => setDraft({...draft,category_id:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3">{categories.filter((item) => !item.hidden || item.id === draft.category_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="flex items-center gap-2 sm:col-span-2"><input type="checkbox" checked={draft.all_day} onChange={(e) => { const all_day=e.target.checked; setDraft({...draft,all_day,starts_at:!all_day&&!draft.starts_at.includes("T")?`${draft.starts_at}T09:00`:draft.starts_at,ends_at:!all_day&&!draft.ends_at.includes("T")?`${draft.ends_at}T10:00`:draft.ends_at}); }}/>All-day appointment</label>
-        <label>Start<EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,Math.max(duration,3600000)); setDraft({...draft,starts_at:start,ends_at:end}); }}/></label>
+        <label>Start<EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,duration > 0 ? duration : defaultDurationMinutes * 60_000); setDraft({...draft,starts_at:start,ends_at:end}); }}/></label>
         <label>End<EnglishDateTimePicker ariaLabel="End" value={draft.ends_at} dateOnly={draft.all_day} timeFormat={timeFormat} min={draft.starts_at} describedBy="event-range-error" onChange={(ends_at) => { endOverridden.current=true; setDraft({...draft,ends_at}); }}/>{draft.ends_at < draft.starts_at && <span id="event-range-error" role="alert" className="mt-1 block text-sm text-red-700">End must not be earlier than Start.</span>}</label>
         <label>Location<input value={draft.location} onChange={(e) => setDraft({...draft,location:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
         {editScope !== "occurrence" && <fieldset className="grid gap-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Repeat</legend>
@@ -646,10 +680,11 @@ export function AgendaShell({ email, userId, timezone, timeFormat, defaultRemind
             const value = e.target.value;
             setDraft({...draft, recurrence_frequency: value === "weekly-n" ? "weekly" : value as RecurrenceFrequency | "", recurrence_interval: value === "weekly-n" ? 2 : 1});
           }} className="mt-1 w-full rounded-lg border border-border bg-background px-3"><option value="">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="weekly-n">Every N weeks</option></select></label>
-          {draft.recurrence_frequency === "weekly" && draft.recurrence_interval > 1 && <label>Week interval<input aria-label="Repeat every weeks" type="number" min="2" max="52" value={draft.recurrence_interval} onChange={(e) => setDraft({...draft,recurrence_interval:Number(e.target.value)})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>}
+          {draft.recurrence_frequency === "weekly" && <div className="sm:col-span-2"><span className="text-sm font-medium">Repeat on</span><div className="mt-2 grid grid-cols-7 gap-1" role="group" aria-label="Repeat on weekday">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day,index) => { const selected=index===new Date(`${draft.starts_at.slice(0,10)}T12:00:00Z`).getUTCDay(); return <button key={day} type="button" disabled={!selected} aria-pressed={selected} className="min-h-11 rounded-md border border-border disabled:opacity-45 aria-pressed:bg-primary aria-pressed:text-white">{day}</button>; })}</div><p className="mt-1 text-xs text-muted">This recurrence model repeats on the Start date weekday.</p></div>}
+          {draft.recurrence_frequency === "weekly" && draft.recurrence_interval > 1 && <label className="flex items-center gap-2">Every<input aria-label="Repeat every weeks" inputMode="numeric" pattern="[0-9]*" value={draft.recurrence_interval} onChange={(e) => setDraft({...draft,recurrence_interval:Number(e.target.value)})} className="w-20 rounded-lg border border-border bg-background px-3"/> weeks</label>}
           {draft.recurrence_frequency && <><label>Ends<select aria-label="Repeat ending" value={draft.recurrence_until ? "date" : "never"} onChange={(e) => setDraft({...draft,recurrence_until:e.target.value === "date" ? draft.starts_at.slice(0,10) : ""})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"><option value="never">Never ends</option><option value="date">Ends on date</option></select></label>
           {draft.recurrence_until && <label>End date<EnglishDateTimePicker ariaLabel="Repeat end date" value={draft.recurrence_until} dateOnly min={draft.starts_at} onChange={(recurrence_until) => setDraft({...draft,recurrence_until:recurrence_until.slice(0,10)})}/></label>}
-          <p className="text-sm text-muted sm:col-span-2">{recurrenceSummary({...editing, recurrence_frequency:draft.recurrence_frequency || null,recurrence_interval:draft.recurrence_interval,recurrence_until:draft.recurrence_until || null} as Appointment)}</p></>}
+          <div className="sm:col-span-2" aria-live="polite"><strong className="text-sm">Summary</strong><p className="text-sm text-muted">{recurrenceSummary({...editing, starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null,recurrence_interval:draft.recurrence_interval,recurrence_until:draft.recurrence_until || null} as Appointment)}</p><strong className="mt-3 block text-sm">Next occurrences</strong><ul className="mt-1 text-sm text-muted">{recurrencePreview({...editing, starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null,recurrence_interval:draft.recurrence_interval,recurrence_until:draft.recurrence_until || null} as Appointment).map((item) => <li key={item.occurrence_id}>{new Intl.DateTimeFormat("en-US",{weekday:"short",month:"short",day:"numeric",timeZone:draft.all_day?"UTC":timezone}).format(new Date(item.starts_at))}</li>)}</ul></div></>}
         </fieldset>}
         <fieldset className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Reminders</legend><div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option)=><label key={option.value} className="flex items-center gap-2"><input aria-label={option.value === 0 ? "Reminder when event begins" : `Reminder ${option.label.toLowerCase()}`} type="checkbox" checked={draft.reminder_minutes.includes(option.value)} onChange={(e)=>setDraft({...draft,reminder_minutes:normalizeReminderMinutes(e.target.checked?[...draft.reminder_minutes,option.value]:draft.reminder_minutes.filter((value)=>value!==option.value))})}/><span aria-hidden="true">{option.label}</span></label>)}</div><p className="mt-2 text-sm text-muted">Browser notifications are best effort and only used when permission has been granted.</p></fieldset>
         <label className="sm:col-span-2">Notes<textarea value={draft.public_notes} onChange={(e) => setDraft({...draft,public_notes:e.target.value})} className="mt-1 min-h-24 w-full rounded-lg border border-border bg-background p-3"/></label>

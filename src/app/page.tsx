@@ -14,7 +14,8 @@ export default async function Home() {
   ]);
   return <AgendaShell email={email} userId={userId}
     timezone={settings?.timezone ?? "UTC"}
-    timeFormat={settings?.time_format === "24h" ? "24h" : "12h"}
+    timeFormatPreference={settings?.time_format ?? "locale"}
+    defaultDuration={settings?.default_duration_minutes ?? 60}
     defaultReminders={settings?.default_reminder_minutes ?? []}
     categories={categories ?? []} />;
 }

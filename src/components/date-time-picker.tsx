@@ -26,125 +26,79 @@ function parseDate(value: string): DateParts | null {
 const twoDigits = (value: number) => String(value).padStart(2, "0");
 const dateKey = ({ year, month, day }: DateParts) => `${year}-${twoDigits(month)}-${twoDigits(day)}`;
 
-function TimeListbox({
+function DirectTimeInput({
   label,
   value,
-  options,
+  minimum,
+  maximum,
   onChange,
-  numeric = false,
 }: {
   label: string;
   value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  numeric?: boolean;
+  minimum: number;
+  maximum: number;
+  onChange: (value: number) => void;
 }) {
   const inputId = useId();
-  const listboxId = useId();
-  const root = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const [text, setText] = useState(value);
-  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.indexOf(value)));
   const [invalid, setInvalid] = useState(false);
-
-  const choose = (index: number) => {
-    const next = options[index];
-    setText(next);
-    setActiveIndex(index);
-    setInvalid(false);
-    setOpen(false);
-    onChange(next);
-  };
   const commitTyped = () => {
-    if (!numeric) return;
-    const normalized = text.padStart(2, "0");
-    const index = options.indexOf(normalized);
-    if (index < 0) {
+    const next = Number(text);
+    if (!text || !Number.isInteger(next) || next < minimum || next > maximum) {
       setText(value);
       setInvalid(true);
-      return;
+      return false;
     }
-    choose(index);
+    setText(twoDigits(next));
+    setInvalid(false);
+    onChange(next);
+    return true;
   };
   const move = (amount: number) => {
-    const next = (activeIndex + amount + options.length) % options.length;
-    setActiveIndex(next);
-    setOpen(true);
+    const current = /^\d+$/.test(text) ? Number(text) : Number(value);
+    const next = current + amount > maximum ? minimum : current + amount < minimum ? maximum : current + amount;
+    setText(twoDigits(next));
+    setInvalid(false);
+    onChange(next);
   };
 
   return (
-    <div
-      ref={root}
-      className="time-listbox"
-      onBlur={(event) => {
-        if (root.current?.contains(event.relatedTarget as Node | null)) return;
-        commitTyped();
-        setOpen(false);
-      }}
-    >
-      <label className="time-listbox-label" htmlFor={inputId}>{label}</label>
+    <div className="time-direct-control">
+      <label className="time-direct-label" htmlFor={inputId}>{label}</label>
       <input
         id={inputId}
-        className="time-listbox-input"
-        role="combobox"
-        inputMode={numeric ? "numeric" : undefined}
+        className="time-direct-input"
+        inputMode="numeric"
         autoComplete="off"
-        maxLength={numeric ? 2 : undefined}
-        readOnly={!numeric}
+        maxLength={2}
         value={text}
-        aria-controls={listboxId}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
         aria-invalid={invalid}
         onChange={(event) => {
-          if (!numeric || !/^\d{0,2}$/.test(event.target.value)) return;
+          if (!/^\d{0,2}$/.test(event.target.value)) return;
           setText(event.target.value);
           setInvalid(false);
         }}
-        onClick={() => setOpen(true)}
+        onBlur={commitTyped}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
-            move(event.key === "ArrowDown" ? 1 : -1);
+            move(event.key === "ArrowUp" ? 1 : -1);
           } else if (event.key === "Enter") {
             event.preventDefault();
-            if (open) choose(activeIndex);
-            else commitTyped();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            setText(value);
-            setInvalid(false);
-            setOpen(false);
+            commitTyped();
           }
         }}
       />
-      {invalid && <span className="time-listbox-error" role="alert">Choose a valid {label.toLowerCase()}.</span>}
-      {open && (
-        <div id={listboxId} className="time-listbox-options" role="listbox" aria-label={`${label} options`}>
-          {options.map((option, index) => (
-            <button
-              id={`${listboxId}-option-${index}`}
-              key={option}
-              type="button"
-              role="option"
-              aria-selected={option === value}
-              data-active={index === activeIndex}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={(event) => {
-                event.stopPropagation();
-                window.requestAnimationFrame(() => choose(index));
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      )}
+      {invalid && <span className="time-direct-error" role="alert">Choose a valid {label.toLowerCase()}.</span>}
     </div>
   );
+}
+
+function PeriodControl({ value, onChange }: { value: "AM" | "PM"; onChange: (value: "AM" | "PM") => void }) {
+  return <div className="time-period-control" data-period={value}><span>AM/PM</span><div role="group" aria-label="AM/PM">
+    <span className="time-period-indicator" aria-hidden="true" />
+    {(["AM", "PM"] as const).map((period) => <button key={period} type="button" aria-pressed={value === period} onClick={() => onChange(period)}>{period}</button>)}
+  </div></div>;
 }
 
 export function formatEnglishDate(value: string): string {
@@ -223,8 +177,6 @@ export function EnglishDateTimePicker({
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (event.key === "Escape" && target?.closest(".time-listbox")) return;
       if (event.key === "Escape") setOpen(false);
     };
     document.addEventListener("mousedown", close);
@@ -331,53 +283,51 @@ export function EnglishDateTimePicker({
               <legend>Time</legend>
               {timeFormat === "12h" ? (
                 <>
-                  <TimeListbox
+                  <DirectTimeInput
                     key={`hour-12-${hour24}`}
                     label="Hour"
-                    numeric
                     value={twoDigits(hour24 % 12 || 12)}
-                    options={Array.from({ length: 12 }, (_, index) => twoDigits(index + 1))}
-                    onChange={(next) => setTime((hour24 >= 12 ? 12 : 0) + (Number(next) % 12), minute)}
+                    minimum={1} maximum={12}
+                    onChange={(next) => setTime((hour24 >= 12 ? 12 : 0) + (next % 12), minute)}
                   />
-                  <TimeListbox
+                  <DirectTimeInput
                     key={`minute-12-${minute}`}
                     label="Minute"
-                    numeric
                     value={twoDigits(minute)}
-                    options={Array.from({ length: 60 }, (_, index) => twoDigits(index))}
-                    onChange={(next) => setTime(hour24, Number(next))}
+                    minimum={0} maximum={59}
+                    onChange={(next) => setTime(hour24, next)}
                   />
-                  <TimeListbox
-                    key={`period-${hour24 < 12 ? "AM" : "PM"}`}
-                    label="AM/PM"
+                  <PeriodControl
                     value={hour24 < 12 ? "AM" : "PM"}
-                    options={["AM", "PM"]}
                     onChange={(next) => setTime((hour24 % 12) + (next === "PM" ? 12 : 0), minute)}
                   />
                 </>
               ) : (
                 <>
-                  <TimeListbox
+                  <DirectTimeInput
                     key={`hour-24-${hour24}`}
                     label="Hour"
-                    numeric
                     value={twoDigits(hour24)}
-                    options={Array.from({ length: 24 }, (_, index) => twoDigits(index))}
-                    onChange={(next) => setTime(Number(next), minute)}
+                    minimum={0} maximum={23}
+                    onChange={(next) => setTime(next, minute)}
                   />
-                  <TimeListbox
+                  <DirectTimeInput
                     key={`minute-24-${minute}`}
                     label="Minute"
-                    numeric
                     value={twoDigits(minute)}
-                    options={Array.from({ length: 60 }, (_, index) => twoDigits(index))}
-                    onChange={(next) => setTime(hour24, Number(next))}
+                    minimum={0} maximum={59}
+                    onChange={(next) => setTime(hour24, next)}
                   />
                 </>
               )}
             </fieldset>
           )}
-          <button type="button" className="date-time-picker-done" onClick={() => setOpen(false)}>Done</button>
+          <button type="button" className="date-time-picker-done" onClick={() => {
+            (document.activeElement as HTMLElement | null)?.blur();
+            window.requestAnimationFrame(() => {
+              if (!root.current?.querySelector('.time-direct-input[aria-invalid="true"]')) setOpen(false);
+            });
+          }}>Done</button>
         </div>
       )}
     </div>

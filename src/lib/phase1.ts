@@ -19,7 +19,7 @@ export const settingsInput = z.object({
   default_duration_minutes: z.number().int().min(5).max(1440),
   week_starts_on: z.union([z.literal(0), z.literal(1)]),
   date_format: z.string().min(1),
-  time_format: z.enum(["12h", "24h"]),
+  time_format: z.enum(["locale", "12h", "24h"]),
   theme: z.enum(["light", "dark", "system"]),
   default_reminder_minutes: z.array(z.union([z.literal(0), z.literal(10), z.literal(30), z.literal(60), z.literal(1440)])).max(5).default([]),
 });

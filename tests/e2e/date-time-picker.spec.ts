@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createCalendarMockState, installCalendarLayoutMocks } from "./calendar-layout-fixtures";
 
-async function openTimePicker(page: Page, timeFormat: "12h" | "24h" = "12h") {
+async function openTimePicker(page: Page, timeFormat: "locale" | "12h" | "24h" = "12h") {
   await installCalendarLayoutMocks(page, createCalendarMockState());
   await page.clock.setFixedTime(new Date("2026-07-29T18:00:00.000Z"));
-  await page.goto(`/privacy/layout-preview${timeFormat === "24h" ? "?timeFormat=24h" : ""}`);
+  await page.goto(`/privacy/layout-preview?timeFormat=${timeFormat}`);
   await page.getByRole("heading", { name: "Your calendar" }).waitFor();
   await page.getByRole("button", { name: "New appointment" }).first().click();
   const editor = page.getByRole("dialog", { name: "Create appointment" });
@@ -15,7 +15,7 @@ async function openTimePicker(page: Page, timeFormat: "12h" | "24h" = "12h") {
   };
 }
 
-test("custom time controls remain readable on one row across the responsive matrix", async ({ page }) => {
+test("custom time controls remain readable across the responsive matrix", async ({ page }) => {
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
 
   for (const viewport of [
@@ -30,17 +30,18 @@ test("custom time controls remain readable on one row across the responsive matr
   ]) {
     await page.setViewportSize(viewport);
     const { picker } = await openTimePicker(page);
-    const hour = picker.getByRole("combobox", { name: "Hour" });
-    const minute = picker.getByRole("combobox", { name: "Minute" });
-    const period = picker.getByRole("combobox", { name: "AM/PM" });
+    const hour = picker.getByRole("textbox", { name: "Hour" });
+    const minute = picker.getByRole("textbox", { name: "Minute" });
+    const period = picker.getByRole("group", { name: "AM/PM" });
     const boxes = await Promise.all([hour.boundingBox(), minute.boundingBox(), period.boundingBox()]);
     const pickerBox = await picker.boundingBox();
     expect(boxes.every(Boolean)).toBe(true);
     expect(pickerBox).toBeTruthy();
     expect(pickerBox!.x).toBeGreaterThanOrEqual(0);
     expect(pickerBox!.x + pickerBox!.width).toBeLessThanOrEqual(viewport.width);
-    expect(Math.max(...boxes.map((box) => box!.y)) - Math.min(...boxes.map((box) => box!.y))).toBeLessThan(2);
-    for (const control of [hour, minute, period]) {
+    expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
+    expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height);
+    for (const control of [hour, minute]) {
       const style = await control.evaluate((element) => {
         const computed = getComputedStyle(element);
         return { height: element.getBoundingClientRect().height, fontSize: Number.parseFloat(computed.fontSize) };
@@ -48,11 +49,12 @@ test("custom time controls remain readable on one row across the responsive matr
       expect(style.height).toBeGreaterThanOrEqual(48);
       expect(style.fontSize).toBeGreaterThanOrEqual(16);
     }
+    expect(boxes[2]!.height).toBeGreaterThanOrEqual(48);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
 });
 
-test("custom listboxes support readable options, numeric entry, and keyboard selection", async ({ page }) => {
+test("direct time inputs validate without opening option popups", async ({ page }) => {
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
   await page.setViewportSize({ width: 320, height: 568 });
   const { editor, picker } = await openTimePicker(page);
@@ -63,40 +65,25 @@ test("custom listboxes support readable options, numeric entry, and keyboard sel
     await expect(picker.getByText(weekday, { exact: true })).toBeVisible();
   }
 
-  const hour = picker.getByRole("combobox", { name: "Hour" });
+  const hour = picker.getByRole("textbox", { name: "Hour" });
   await expect(hour).toHaveAttribute("inputmode", "numeric");
   await hour.focus();
   expect(await hour.evaluate((element) => Number.parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThanOrEqual(2);
   await hour.click();
-  const hourOptions = picker.getByRole("listbox", { name: "Hour options" });
-  const firstOption = hourOptions.getByRole("option").first();
-  const optionStyle = await firstOption.evaluate((element) => {
-    const computed = getComputedStyle(element);
-    return { height: element.getBoundingClientRect().height, fontSize: Number.parseFloat(computed.fontSize) };
-  });
-  expect(optionStyle.height).toBeGreaterThanOrEqual(44);
-  expect(optionStyle.fontSize).toBeGreaterThanOrEqual(17);
-  await expect(hourOptions.getByRole("option", { selected: true })).toHaveCount(1);
-  const hoverOption = hourOptions.getByRole("option").nth(1);
-  const beforeHover = await hoverOption.evaluate((element) => getComputedStyle(element).backgroundColor);
-  await hoverOption.hover();
-  expect(await hoverOption.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(beforeHover);
-  await hour.press("Escape");
+  await expect(picker.getByRole("listbox")).toHaveCount(0);
+  await expect(hour).not.toHaveAttribute("role", "combobox");
   await hour.fill("11");
   await hour.press("Tab");
-  await expect(picker.getByRole("combobox", { name: "Hour" })).toHaveValue("11");
-  await picker.getByRole("combobox", { name: "Minute" }).press("ArrowDown");
-  await picker.getByRole("combobox", { name: "Minute" }).press("Enter");
-  await expect(picker.getByRole("combobox", { name: "Minute" })).toHaveValue("01");
-  await picker.getByRole("combobox", { name: "Minute" }).press("ArrowUp");
-  await picker.getByRole("combobox", { name: "Minute" }).press("Enter");
-  await expect(picker.getByRole("combobox", { name: "Minute" })).toHaveValue("00");
+  await expect(picker.getByRole("textbox", { name: "Hour" })).toHaveValue("11");
+  await picker.getByRole("textbox", { name: "Minute" }).press("ArrowUp");
+  await expect(picker.getByRole("textbox", { name: "Minute" })).toHaveValue("01");
+  await picker.getByRole("textbox", { name: "Minute" }).press("ArrowDown");
+  await expect(picker.getByRole("textbox", { name: "Minute" })).toHaveValue("00");
 
-  const period = picker.getByRole("combobox", { name: "AM/PM" });
-  const nextPeriod = await period.inputValue() === "AM" ? "PM" : "AM";
-  await period.click();
-  await picker.getByRole("listbox", { name: "AM/PM options" }).getByRole("option", { name: nextPeriod }).click();
-  await expect(picker.getByRole("combobox", { name: "AM/PM" })).toHaveValue(nextPeriod);
+  const periodControl = picker.getByRole("group", { name: "AM/PM" });
+  const currentPeriod = await periodControl.getByRole("button", { pressed: true }).textContent();
+  const nextPeriod = currentPeriod === "AM" ? "PM" : "AM";
+  await periodControl.getByRole("button", { name: nextPeriod, exact: true }).click();
 
   const done = picker.getByRole("button", { name: "Done" });
   await done.scrollIntoViewIfNeeded();
@@ -112,16 +99,57 @@ test("24-hour mode keeps Hour and Minute on one readable row", async ({ page }) 
   for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 1000 }]) {
     await page.setViewportSize(viewport);
     const { picker } = await openTimePicker(page, "24h");
-    const hour = picker.getByRole("combobox", { name: "Hour" });
-    const minute = picker.getByRole("combobox", { name: "Minute" });
+    const hour = picker.getByRole("textbox", { name: "Hour" });
+    const minute = picker.getByRole("textbox", { name: "Minute" });
     const hourBox = await hour.boundingBox();
     const minuteBox = await minute.boundingBox();
     expect(hourBox && minuteBox).toBeTruthy();
     expect(Math.abs(hourBox!.y - minuteBox!.y)).toBeLessThan(2);
-    await expect(picker.getByRole("combobox", { name: "AM/PM" })).toHaveCount(0);
+    await expect(picker.getByRole("group", { name: "AM/PM" })).toHaveCount(0);
     await hour.fill("23");
     await hour.press("Tab");
-    await expect(picker.getByRole("combobox", { name: "Hour" })).toHaveValue("23");
+    await expect(picker.getByRole("textbox", { name: "Hour" })).toHaveValue("23");
+    await hour.fill("24");
+    await hour.press("Enter");
+    await expect(picker.getByRole("alert")).toContainText("valid hour");
+    await hour.fill("0");
+    await hour.press("Enter");
+    await expect(picker.getByRole("textbox", { name: "Hour" })).toHaveValue("00");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
+});
+
+test("follow system resolves the browser hour cycle and explicit formats override it", async ({ page }) => {
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  const { picker } = await openTimePicker(page, "locale");
+  const systemUses12Hour = await page.evaluate(() =>
+    new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12 !== false,
+  );
+  await expect(picker.getByRole("group", { name: "AM/PM" })).toHaveCount(systemUses12Hour ? 1 : 0);
+
+  const explicit24 = await openTimePicker(page, "24h");
+  await expect(explicit24.picker.getByRole("group", { name: "AM/PM" })).toHaveCount(0);
+  const explicit12 = await openTimePicker(page, "12h");
+  await expect(explicit12.picker.getByRole("group", { name: "AM/PM" })).toHaveCount(1);
+});
+
+test("switching AM/PM away and back leaves the appointment timestamp unchanged", async ({ page }) => {
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  await installCalendarLayoutMocks(page, createCalendarMockState());
+  await page.clock.setFixedTime(new Date("2026-07-29T18:00:00.000Z"));
+  await page.goto("/privacy/layout-preview?timeFormat=12h");
+  await page.getByRole("heading", { name: "Your calendar" }).waitFor();
+  await page.getByRole("button", { name: "New appointment" }).first().click();
+  const editor = page.getByRole("dialog", { name: "Create appointment" });
+  const start = editor.getByRole("textbox", { name: "Start" });
+  const originalValue = await start.inputValue();
+  await start.click();
+  const picker = editor.getByRole("dialog", { name: "Start picker" });
+  const group = picker.getByRole("group", { name: "AM/PM" });
+  const originalPeriod = (await group.getByRole("button", { pressed: true }).textContent()) as "AM" | "PM";
+  const otherPeriod = originalPeriod === "AM" ? "PM" : "AM";
+  await group.getByRole("button", { name: otherPeriod, exact: true }).click();
+  await group.getByRole("button", { name: originalPeriod, exact: true }).click();
+  await picker.getByRole("button", { name: "Done" }).click();
+  await expect(start).toHaveValue(originalValue);
 });

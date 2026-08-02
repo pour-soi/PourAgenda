@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatTime, normalizeTimeFormat } from "./date-format";
+import {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  normalizeTimeFormat,
+  normalizeTimeFormatPreference,
+  resolveTimeFormat,
+} from "./date-format";
 
 describe("fixed en-US display formatting", () => {
-  it("defaults missing and legacy system preferences to 12-hour time", () => {
-    expect(normalizeTimeFormat(undefined)).toBe("12h");
-    expect(normalizeTimeFormat("locale")).toBe("12h");
-    expect(normalizeTimeFormat("24h")).toBe("24h");
+  it("normalizes missing and unknown preferences to follow system", () => {
+    expect(normalizeTimeFormatPreference(undefined)).toBe("locale");
+    expect(normalizeTimeFormatPreference("unknown")).toBe("locale");
+  });
+
+  it("follows the system hour cycle unless explicitly overridden", () => {
+    expect(resolveTimeFormat("locale", true)).toBe("12h");
+    expect(resolveTimeFormat("locale", false)).toBe("24h");
+    expect(resolveTimeFormat("12h", false)).toBe("12h");
+    expect(resolveTimeFormat("24h", true)).toBe("24h");
+    expect(normalizeTimeFormat("locale", true)).toBe("12h");
   });
 
   it("keeps MM/DD/YYYY unchanged between time modes", () => {

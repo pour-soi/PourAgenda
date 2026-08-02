@@ -213,6 +213,7 @@ export type QuickAddResult = {
   time: string | null;
   status: "complete" | "partial" | "unsupported";
   explanation: string;
+  recurrenceFrequency: "weekly" | null;
 };
 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -246,6 +247,15 @@ export function parseQuickAdd(
   let dateKey: string | null = null;
   let time: string | null = null;
   let remainder = original;
+  let recurrenceFrequency: "weekly" | null = null;
+
+  const recurringWeekday = /\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i.exec(remainder);
+  if (recurringWeekday) {
+    const weekday = WEEKDAYS.findIndex((value) => value.startsWith(recurringWeekday[1].slice(0, 3).toLowerCase()));
+    dateKey = dateKeyForWeekday(today, weekday);
+    recurrenceFrequency = "weekly";
+    remainder = remainder.replace(recurringWeekday[0], "");
+  }
 
   const relative = /\bin\s+(\d{1,2})\s+hours?\b/i.exec(original);
   if (relative) {
@@ -279,17 +289,17 @@ export function parseQuickAdd(
   }
 
   if (!dateKey) {
-    const weekday = WEEKDAYS.findIndex((value) => new RegExp(`\\b${value}\\b`, "i").test(remainder));
+    const weekday = WEEKDAYS.findIndex((value) => new RegExp(`\\b(?:${value}|${value.slice(0, 3)})\\b`, "i").test(remainder));
     if (weekday >= 0) {
       dateKey = dateKeyForWeekday(today, weekday);
-      remainder = remainder.replace(new RegExp(`\\b${WEEKDAYS[weekday]}\\b`, "i"), "");
+      remainder = remainder.replace(new RegExp(`\\b(?:${WEEKDAYS[weekday]}|${WEEKDAYS[weekday].slice(0, 3)})\\b`, "i"), "");
     }
   }
 
   if (!dateKey) {
-    const monthMatch = new RegExp(`\\b(${MONTHS.join("|")})\\s+(\\d{1,2})\\b`, "i").exec(remainder);
+    const monthMatch = new RegExp(`\\b(${MONTHS.map((month) => `${month.slice(0, 3)}(?:${month.slice(3)})?`).join("|")})\\s+(\\d{1,2})\\b`, "i").exec(remainder);
     if (monthMatch) {
-      const month = MONTHS.indexOf(monthMatch[1].toLowerCase());
+      const month = MONTHS.findIndex((value) => value.startsWith(monthMatch[1].slice(0, 3).toLowerCase()));
       const day = Number(monthMatch[2]);
       const currentYear = Number(today.slice(0, 4));
       const candidate = new Date(Date.UTC(currentYear, month, day, 12));
@@ -303,12 +313,12 @@ export function parseQuickAdd(
 
   const title = remainder.replace(/\bat\b/gi, "").replace(/\s+/g, " ").trim() || original;
   if (!dateKey) {
-    return { title, dateKey: null, time, status: "unsupported", explanation: "Choose a date and time before saving." };
+    return { title, dateKey: null, time, recurrenceFrequency, status: "unsupported", explanation: "Choose a date and time before saving." };
   }
   if (!time) {
-    return { title, dateKey, time: null, status: "partial", explanation: "Date recognized. Choose a time before saving." };
+    return { title, dateKey, time: null, recurrenceFrequency, status: "partial", explanation: "Date recognized. Choose a time before saving." };
   }
-  return { title, dateKey, time, status: "complete", explanation: "Date and time recognized. Review before saving." };
+  return { title, dateKey, time, recurrenceFrequency, status: "complete", explanation: "Date and time recognized. Review before saving." };
 }
 
 export type SearchableEvent = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandAppointments, findRecurringConflicts, recurrenceSummary } from "./recurrence";
+import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrenceSummary } from "./recurrence";
 import type { Appointment } from "@/types/domain";
 
 const series = (overrides: Partial<Appointment> = {}): Appointment => ({
@@ -54,7 +54,13 @@ describe("bounded recurrence expansion", () => {
   it("preserves all-day dates and documents summaries", () => {
     const rows = expand([series({ all_day: true, starts_at: "2026-03-06T08:00:00Z", ends_at: "2026-03-07T08:00:00Z", recurrence_count: 2 })]);
     expect(rows.map((x) => x.starts_at.slice(0, 10))).toEqual(["2026-03-06", "2026-03-07"]);
-    expect(recurrenceSummary(series({ recurrence_frequency: "weekly", recurrence_interval: 2 }))).toBe("Every 2 weeks, never ends");
+    expect(recurrenceSummary(series({ recurrence_frequency: "weekly", recurrence_interval: 2 }))).toBe("Repeats every 2 weeks on Friday and never ends.");
+  });
+  it("keeps the inclusive final date for recurring multi-day all-day appointments", () => {
+    const rows = expand([series({ all_day: true, starts_at: "2026-03-06T00:00:00Z", ends_at: "2026-03-09T00:00:00Z",
+      intended_local_start: "2026-03-06", intended_local_end: "2026-03-08", recurrence_frequency: "weekly", recurrence_count: 2 })]);
+    expect(rows.map((row) => (Date.parse(row.ends_at) - Date.parse(row.starts_at)) / 864e5)).toEqual([3, 3]);
+    expect(recurrencePreview(series({ recurrence_frequency: "weekly", recurrence_count: 5 }), 3)).toHaveLength(3);
   });
   it("detects one-time, recurring, modified, and DST occurrence conflicts but ignores cancellation and adjacency", () => {
     const candidate = series({ id: "candidate", recurrence_frequency: "weekly", recurrence_count: 3 });

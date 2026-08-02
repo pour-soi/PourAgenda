@@ -9,7 +9,7 @@ describe("Phase 1 validation", () => {
   it("validates IANA timezones and settings limits", () => {
     const parsed = settingsInput.safeParse({
       timezone: "America/Los_Angeles", default_duration_minutes: 30, week_starts_on: 1,
-      date_format: "locale", time_format: "24h", theme: "system",
+      date_format: "locale", time_format: "locale", theme: "system",
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.automatic_timezone).toBe(true);

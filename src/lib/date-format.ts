@@ -1,7 +1,20 @@
 export type TimeFormat = "12h" | "24h";
+export type TimeFormatPreference = "locale" | TimeFormat;
 
-export const normalizeTimeFormat = (value: string | null | undefined): TimeFormat =>
-  value === "24h" ? "24h" : "12h";
+export const normalizeTimeFormatPreference = (
+  value: string | null | undefined,
+): TimeFormatPreference => (value === "12h" || value === "24h" ? value : "locale");
+
+export const resolveTimeFormat = (
+  value: string | null | undefined,
+  systemUses12Hour = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12,
+): TimeFormat => {
+  const preference = normalizeTimeFormatPreference(value);
+  if (preference !== "locale") return preference;
+  return systemUses12Hour === false ? "24h" : "12h";
+};
+
+export const normalizeTimeFormat = resolveTimeFormat;
 
 export function formatDate(value: Date | string, timezone = "UTC"): string {
   return new Intl.DateTimeFormat("en-US", {

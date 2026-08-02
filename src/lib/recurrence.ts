@@ -34,11 +34,34 @@ function occurrenceLocalStart(series: Appointment, index: number) {
 export function recurrenceSummary(appointment: Appointment) {
   if (!appointment.recurrence_frequency) return "Does not repeat";
   const interval = appointment.recurrence_interval ?? 1;
-  const frequency = appointment.recurrence_frequency;
-  const cadence = interval === 1
-    ? `${frequency[0].toUpperCase()}${frequency.slice(1)}`
-    : frequency === "weekly" ? `Every ${interval} weeks` : `Every ${interval} ${frequency.slice(0, -2)}s`;
-  return appointment.recurrence_until ? `${cadence} until ${appointment.recurrence_until}` : `${cadence}, never ends`;
+  const start = (appointment.intended_local_start ?? toLocalInput(appointment.starts_at, appointment.timezone)).slice(0, 10);
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(`${start}T12:00:00Z`));
+  const day = Number(start.slice(8, 10));
+  const ordinal = `${day}${day % 100 >= 11 && day % 100 <= 13 ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th"}`;
+  const cadence = appointment.recurrence_frequency === "daily"
+    ? interval === 1 ? "Repeats every day" : `Repeats every ${interval} days`
+    : appointment.recurrence_frequency === "weekly"
+      ? interval === 1 ? `Repeats every ${weekday}` : `Repeats every ${interval} weeks on ${weekday}`
+      : interval === 1 ? `Repeats every month on the ${ordinal}` : `Repeats every ${interval} months on the ${ordinal}`;
+  const ending = appointment.recurrence_until
+    ? ` until ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${appointment.recurrence_until}T12:00:00Z`))}.`
+    : " and never ends.";
+  return `${cadence}${ending}`;
+}
+
+export function recurrencePreview(appointment: Appointment, count = 3): AppointmentOccurrence[] {
+  if (!appointment.recurrence_frequency || count < 1) return [];
+  const start = new Date(appointment.starts_at);
+  const interval = appointment.recurrence_interval ?? 1;
+  const end = new Date(start);
+  if (appointment.recurrence_frequency === "daily") end.setUTCDate(end.getUTCDate() + interval * (count + 1));
+  if (appointment.recurrence_frequency === "weekly") end.setUTCDate(end.getUTCDate() + interval * 7 * (count + 1));
+  if (appointment.recurrence_frequency === "monthly") end.setUTCMonth(end.getUTCMonth() + interval * (count + 1));
+  if (appointment.recurrence_until) {
+    const until = new Date(`${appointment.recurrence_until}T23:59:59.999Z`);
+    if (until < end) end.setTime(until.getTime());
+  }
+  return expandAppointments([appointment], new Date(start.getTime() - 1).toISOString(), end.toISOString()).slice(0, count);
 }
 
 export function expandAppointments(
@@ -73,7 +96,8 @@ export function expandAppointments(
     const duration = new Date(row.ends_at).getTime() - new Date(row.starts_at).getTime();
     const allDaySpan = row.all_day
       ? Math.max(1, Math.round((Date.parse(`${(row.intended_local_end ?? row.ends_at).slice(0, 10)}T00:00:00Z`)
-        - Date.parse(`${(row.intended_local_start ?? row.starts_at).slice(0, 10)}T00:00:00Z`)) / 864e5))
+        - Date.parse(`${(row.intended_local_start ?? row.starts_at).slice(0, 10)}T00:00:00Z`)) / 864e5)
+        + (row.intended_local_end ? 1 : 0))
       : 0;
     const hardIterations = 100_000;
     for (let index = 0; index < hardIterations; index += 1) {

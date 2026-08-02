@@ -56,13 +56,16 @@ export function SettingsManager({
   const [name, setName] = useState(initialName);
   const [settings, setSettings] = useState({
     ...initialSettings,
-    time_format: initialSettings.time_format === "24h" ? "24h" : "12h",
+    time_format: ["locale", "12h", "24h"].includes(initialSettings.time_format)
+      ? initialSettings.time_format
+      : "locale",
   });
   const [categories, setCategories] = useState(initialCategories);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [categoryReplacement, setCategoryReplacement] = useState<CategoryReplacement | null>(null);
   const moveDeleteInProgress = useRef(false);
+  const persistedCategories = useRef(new Map(initialCategories.map((category) => [category.id, category])));
   const supabase = createClient();
   useEffect(() => {
     const detect = () => setSettings((current) => {
@@ -190,12 +193,24 @@ export function SettingsManager({
       setMessage(parsed.error.issues[0]?.message ?? "Check the category.");
       return;
     }
-    const { error } = await supabase
+    setPending(true);
+    const { data, error } = await supabase
       .from("categories")
       .update(parsed.data)
       .eq("id", category.id)
-      .eq("user_id", userId);
-    setMessage(error ? friendlyDataError(error) : "Category updated.");
+      .eq("user_id", userId)
+      .select("id,name,color,hidden")
+      .single();
+    setPending(false);
+    if (error || !data) {
+      const persisted = persistedCategories.current.get(category.id);
+      if (persisted) setCategories((current) => current.map((item) => item.id === category.id ? persisted : item));
+      setMessage(error ? friendlyDataError(error) : "That category could not be found.");
+      return;
+    }
+    persistedCategories.current.set(data.id, data);
+    setCategories((current) => current.map((item) => item.id === data.id ? data : item));
+    setMessage("Category updated.");
   }
 
   async function removeCategory(category: Category, replacementCategoryId: string | null = null): Promise<boolean> {
@@ -319,7 +334,7 @@ export function SettingsManager({
           </label>
           <label className="block text-sm font-medium">Time format
             <select value={settings.time_format} onChange={(event) => setSettings({ ...settings, time_format: event.target.value })} className="mt-2 w-full rounded-lg border border-border bg-background px-3">
-              <option value="12h">12-hour</option><option value="24h">24-hour</option>
+              <option value="locale">Follow system</option><option value="12h">12-hour</option><option value="24h">24-hour</option>
             </select>
           </label>
           <label className="block text-sm font-medium">Theme
