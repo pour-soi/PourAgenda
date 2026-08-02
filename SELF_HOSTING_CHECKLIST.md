@@ -11,6 +11,8 @@ Complete this checklist for each independent deployment. Nothing here certifies 
 - [ ] OpenNext builds and runs in local `workerd` through `pnpm preview`.
 - [ ] `.env.local`, `.env.rls-test`, `.dev.vars`, Wrangler state, browser auth state, database dumps, and test output are untracked.
 - [ ] Source and generated bundles contain no service-role key, password, token, personal fixture, or another deployment’s identifiers.
+- [ ] The generated OpenNext environment contains the intended production Supabase URL and publishable key, with no localhost or `127.0.0.1` fallback.
+- [ ] Only source archives will be released; `.next`, `.open-next`, Worker bundles, logs, traces, dumps, and environment files will not be uploaded.
 
 ## Supabase
 

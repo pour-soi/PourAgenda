@@ -2,19 +2,21 @@
 
 PourAgenda is a privacy-focused appointment and schedule manager built as a responsive Next.js progressive web app.
 
-> **PourAgenda is self-hosted software. No hosted service is provided.**
+> **No public hosted demo is provided. This repository is for self-hosting with your own Supabase and deployment account.**
 >
 > **Each deployment uses the deployer’s own Cloudflare and Supabase accounts. The maintainers do not host or access user calendar data.**
 
-The repository contains source code, database migrations, tests, and deployment instructions. It does not include a shared Worker, Supabase project, user account, calendar data, or public demo.
+PourAgenda is distributed as source code. The repository contains source code, generic database migrations, tests, and deployment instructions. It does not include or provide access to the author's private deployment, Worker, Supabase project, user account, or calendar data.
 
 ## Features
 
 - Month, week, day, and agenda calendar views
 - Dedicated mobile week and day layouts with iPhone safe-area support
-- Appointments, categories, contacts, recurrence, reminders, search, and bounded lists
-- Category colors, all-day events, conflict checks, stale-edit protection, drag and resize on supported desktop views
-- Owner-controlled, expiring appointment sharing with hashed tokens
+- Appointment creation, editing, deletion, recurrence, reminders, search, and bounded lists
+- Category-only organization, category colors, and atomic category Move & Delete
+- Timed appointments and timezone-stable date-only all-day appointments
+- Quick Add, saved default duration, and 12-hour, 24-hour, or system time formats
+- Conflict checks, stale-edit protection, drag, and resize on supported desktop views
 - CSV, JSON, and iCalendar export
 - Automatic or manual IANA time-zone preferences
 - Email/password authentication, password recovery, account export, and account deletion
@@ -50,6 +52,8 @@ Every operator creates and controls their own infrastructure:
 - any deployment-specific privacy notice or support channel.
 
 The browser-visible Supabase project URL and publishable key identify the operator’s project but are not secret credentials. RLS is the security boundary and is mandatory. A service-role key, database password, access token, refresh token, or Cloudflare credential must never be placed in browser code or committed.
+
+The public repository contains no author production data. Database contents remain in each self-hoster's own Supabase project, and the author's private deployment is separate from this source repository. Never submit secrets, `.env` files, account identifiers, production logs, or personal calendar data in GitHub issues or pull requests.
 
 See [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [SUPABASE_SETUP.md](SUPABASE_SETUP.md), and the [self-hosting checklist](SELF_HOSTING_CHECKLIST.md).
 

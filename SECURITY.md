@@ -8,6 +8,8 @@ Use GitHub’s private vulnerability reporting flow:
 
 Do not open a public issue containing credentials, tokens, personal data, exploit details, or an affected deployment URL. A report should include the affected commit, impact, minimal reproduction, and any suggested mitigation without attaching production database exports or authentication state.
 
+Do not attach `.env` files, API keys, email addresses, user IDs, real appointment data, private calendar screenshots, or unredacted production logs. Use synthetic data and redact deployment identifiers.
+
 ## Supported code
 
 Security fixes target the current `main` branch. This repository provides source code, not a hosted service or managed infrastructure.

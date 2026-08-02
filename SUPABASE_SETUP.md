@@ -2,6 +2,8 @@
 
 Every PourAgenda operator creates, owns, and controls an independent Supabase project. No shared database, Auth tenant, project reference, account, or calendar data is provided.
 
+The public source repository does not connect users to the author's private backend. Use only a project created in an account you control, and verify RLS before entering real calendar data.
+
 ## Browser configuration
 
 The application reads:
@@ -127,6 +129,8 @@ Public signup is an operator decision:
 - enable it only if the deployment accepts new users
 - disable public and anonymous signup for a private or personal instance
 - verify the Auth user list after test cleanup
+
+For a private personal deployment, create the intended account first and then keep public registration disabled.
 
 ## RLS is mandatory
 

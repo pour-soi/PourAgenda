@@ -10,6 +10,8 @@ Thank you for helping improve PourAgenda. Contributions should preserve its sour
 4. Use synthetic names, events, categories, time zones, screenshots, and fixtures.
 5. Discuss schema or security-boundary changes before implementing them.
 
+Never attach API keys, `.env` files, email addresses, user IDs, real appointments, private calendar screenshots, or unredacted production logs to an issue or pull request. Replace all account and calendar information with synthetic examples before sharing it publicly.
+
 ## Development setup
 
 ```bash

@@ -1,5 +1,9 @@
 # Frequently Asked Questions
 
+## Is there a public PourAgenda demo?
+
+No. PourAgenda is a source-code-only release. Create your own Supabase project and deploy an independent instance using your own deployment account.
+
 ## Can I use my own Supabase project?
 
 Yes. PourAgenda is designed for independent self-hosting. Create your own Supabase project and set only:
@@ -11,7 +15,7 @@ in your local environment.
 
 ## Does this repository contain your data?
 
-No. The repository contains only source code, migrations, scripts, and documentation. It does not include shared production data, accounts, or private calendar records.
+No. The repository contains only source code, generic migrations, scripts, synthetic fixtures, and documentation. It does not include the author's production backend, accounts, or private calendar records.
 
 ## Where do I get the Publishable (Anon) Key?
 

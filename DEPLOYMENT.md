@@ -120,6 +120,8 @@ pnpm scan:credentials
 
 `pnpm preview` builds with OpenNext and runs the Worker in Cloudflare’s local `workerd` runtime. Resolve every failing required check before deployment.
 
+Production builds must receive the operator's own Supabase URL and publishable key at build time. Do not deploy an OpenNext bundle built with localhost, `127.0.0.1`, placeholder values, or another operator's project. Before deployment, inspect `.open-next/cloudflare/next-env.mjs` without printing the full key and confirm that it contains the intended project URL and publishable key and no local-development endpoint.
+
 ## 10. Authenticate Wrangler
 
 ```bash
@@ -154,6 +156,8 @@ pnpm deploy
 ```
 
 The command builds the OpenNext bundle and deploys it to the Worker named in your local `wrangler.jsonc`. Deployment consumes your Cloudflare quota. No shared quota or Worker is provided.
+
+Never commit `wrangler.jsonc`, `.env.local`, `.open-next`, `.next`, Wrangler state, or deployment logs. Release source only; do not upload a Worker bundle or other build output as a GitHub Release asset.
 
 The current application requires only the static-assets binding. If future changes require server secrets, store them with Cloudflare secret storage, for example `wrangler secret put`, rather than in Git, `wrangler.jsonc`, or `.dev.vars`.
 
