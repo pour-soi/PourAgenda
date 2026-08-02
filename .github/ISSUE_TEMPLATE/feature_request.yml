@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a focused improvement for self-hosted PourAgenda instances
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the need without sharing API keys, `.env` files, production logs, real appointments, personal email addresses, account identifiers, production URLs, or private screenshots.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this change solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected user-visible behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or workarounds have you considered?
+
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and security impact
+      description: Explain any effect on authentication, RLS, stored data, environment variables, or deployment security.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: This request contains no credentials, environment files, production identifiers, or personal calendar data.
+          required: true

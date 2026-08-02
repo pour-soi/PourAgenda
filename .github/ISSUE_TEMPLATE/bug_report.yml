@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem without sharing private data
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve PourAgenda.
+
+        Do not include API keys, `.env` files, database contents, real appointments, personal email addresses, account identifiers, production URLs, unredacted logs, or private screenshots.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the release version or commit hash where the problem occurs.
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device
+      description: Include browser version, operating system, and device type.
+      placeholder: Safari 18 on iPhone 15, iOS 18
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use synthetic example data and list the smallest reliable sequence.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Redacted screenshots or logs
+      description: Optional. Remove personal calendar data, emails, IDs, URLs, tokens, and environment values before uploading.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I have removed credentials, environment files, production URLs, personal data, and private calendar information.
+          required: true

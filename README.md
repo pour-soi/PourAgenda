@@ -1,77 +1,72 @@
 # PourAgenda
 
-PourAgenda is a privacy-focused appointment and schedule manager built as a responsive Next.js progressive web app.
+**A privacy-first, self-hosted calendar and appointment PWA built with Next.js, Supabase, and Cloudflare.**
 
-> **No public hosted demo is provided. This repository is for self-hosting with your own Supabase and deployment account.**
->
-> **Each deployment uses the deployer’s own Cloudflare and Supabase accounts. The maintainers do not host or access user calendar data.**
+[![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-356859)](https://github.com/pour-soi/PourAgenda/releases/tag/v1.0.0)
+[![MIT License](https://img.shields.io/badge/license-MIT-1f2937)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/explore/progressive-web-apps)
+[![CI](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml/badge.svg)](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml)
 
-PourAgenda is distributed as source code. The repository contains source code, generic database migrations, tests, and deployment instructions. It does not include or provide access to the author's private deployment, Worker, Supabase project, user account, or calendar data.
+> **No public hosted demo is provided. PourAgenda is distributed as source code for independent self-hosting with your own Supabase and deployment account.**
 
-## Features
+PourAgenda is a responsive personal calendar for people who want to control their application and data. The repository contains application source, generic database migrations, tests, and self-hosting documentation. It does not provide access to the author's private deployment or database.
 
-- Month, week, day, and agenda calendar views
-- Dedicated mobile week and day layouts with iPhone safe-area support
-- Appointment creation, editing, deletion, recurrence, reminders, search, and bounded lists
-- Category-only organization, category colors, and atomic category Move & Delete
-- Timed appointments and timezone-stable date-only all-day appointments
-- Quick Add, saved default duration, and 12-hour, 24-hour, or system time formats
-- Conflict checks, stale-edit protection, drag, and resize on supported desktop views
-- CSV, JSON, and iCalendar export
-- Automatic or manual IANA time-zone preferences
-- Email/password authentication, password recovery, account export, and account deletion
-- Installable PWA with a deliberately limited offline shell
-- PostgreSQL Row Level Security for all user-owned tables
+## Preview
 
-## Screenshots
+All preview images use synthetic fixture data. They contain no production account, URL, appointment, or database response.
 
-All screenshots use synthetic fixture data. They contain no production accounts, URLs, appointments, or database responses.
+![Synthetic PourAgenda desktop month view](docs/images/pouragenda-desktop.png)
 
 | Mobile month | Mobile week |
 | --- | --- |
-| ![Synthetic mobile month view](docs/images/pouragenda-mobile.png) | ![Synthetic mobile week view](docs/images/pouragenda-mobile-week.png) |
+| ![Synthetic PourAgenda mobile month view](docs/images/pouragenda-mobile.png) | ![Synthetic PourAgenda mobile week view](docs/images/pouragenda-mobile-week.png) |
 
-![Synthetic desktop calendar view](docs/images/pouragenda-desktop.png)
+## Features
 
-## Technology
+### Calendar and appointments
 
-- Next.js 16 and React 19
-- TypeScript and Tailwind CSS 4
-- FullCalendar 6
-- Supabase Auth and PostgreSQL
-- OpenNext for Cloudflare Workers
-- Vitest and Playwright
+- Month, week, day, and agenda views
+- Timed and all-day appointments with create, edit, and delete workflows
+- Responsive mobile and desktop layouts
+- Timezone-aware timed appointments
+- Date-only all-day appointments that remain stable across timezones
+- Search, conflict checks, drag, and resize on supported desktop views
 
-## Privacy and hosting model
+### Productivity
 
-Every operator creates and controls their own infrastructure:
+- Quick Add and saved default appointment duration
+- Daily, weekly, and monthly recurring appointments
+- Accessible recurrence edit-scope dialog
+- 12-hour, 24-hour, and Follow system time formats
+- CSV, JSON, and iCalendar export
 
-- a Supabase project containing that deployment’s Auth users and calendar data;
-- a Cloudflare account and uniquely named Worker;
-- authentication email, redirect, and signup settings;
-- any deployment-specific privacy notice or support channel.
+### Organization
 
-The browser-visible Supabase project URL and publishable key identify the operator’s project but are not secret credentials. RLS is the security boundary and is mandatory. A service-role key, database password, access token, refresh token, or Cloudflare credential must never be placed in browser code or committed.
+- Category-only organization and category colors
+- Atomic category replacement with Move & Delete
+- Appointment lists and category filtering
 
-The public repository contains no author production data. Database contents remain in each self-hoster's own Supabase project, and the author's private deployment is separate from this source repository. Never submit secrets, `.env` files, account identifiers, production logs, or personal calendar data in GitHub issues or pull requests.
+### Privacy and self-hosting
 
-See [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [SUPABASE_SETUP.md](SUPABASE_SETUP.md), and the [self-hosting checklist](SELF_HOSTING_CHECKLIST.md).
+- Supabase email/password authentication
+- PostgreSQL Row Level Security (RLS)
+- User-scoped data isolation
+- Independent deployment with no owner backend access
+- Installable PWA with a deliberately limited offline shell
 
-## Supported Deployment Targets
+## Quick Start
 
-- ✅ **Cloudflare** (supported): use the OpenNext Worker workflow described in this repository.
-- ⚠️ **Self-hosting** (supported): run your own Supabase project, own deployment account, and infrastructure.
-- ❌ **Vercel** (currently unsupported): this repository is documented and verified around Cloudflare Workers with OpenNext; Vercel is not currently supported or validated.
-
-## Requirements
-
-- Node.js 20.9 or newer
-- pnpm 11
-- a Supabase project owned by the deployer
-- a Cloudflare account owned by the deployer
-- Wrangler browser authentication for deployment
-
-## Local development
+1. Clone the repository.
+2. Enable Corepack and install dependencies.
+3. Create a Supabase project that you own.
+4. Copy `.env.example` to `.env.local`.
+5. Add your own Supabase Project URL and Publishable key.
+6. Apply the repository migrations by following [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+7. Start the local application with `pnpm dev`.
+8. Follow [DEPLOYMENT.md](DEPLOYMENT.md) when you are ready to deploy.
 
 ```bash
 git clone https://github.com/pour-soi/PourAgenda.git
@@ -82,96 +77,85 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Edit `.env.local` with values from **your own** Supabase project:
+Use placeholders only until you replace them locally with values from your own project:
 
 ```dotenv
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_SUPABASE_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 ```
 
-The publishable key may be called the anon key in older Supabase projects. Use it only with verified RLS policies. Do not use a service-role key.
+Before entering real data, complete the [Supabase setup guide](SUPABASE_SETUP.md) and [self-hosting checklist](SELF_HOSTING_CHECKLIST.md).
 
-## Supabase setup
+## Documentation
 
-1. Create a new Supabase project.
-2. Apply every file in `supabase/migrations` in filename order.
-3. Run the read-only audits under `supabase/verification`.
-4. Enable email/password authentication and configure localhost redirect URLs.
-5. Decide whether public signup should be enabled. Disable it for a personal/private deployment.
-6. Confirm anonymous reads and writes to private tables are rejected before adding real data.
+| Document | Purpose |
+| --- | --- |
+| [README.md](README.md) | Product overview and quick start |
+| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | Create and secure an independent Supabase backend |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy with Cloudflare/OpenNext or run the supported stack yourself |
+| [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) | Pre-launch privacy, security, and operations checklist |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Application architecture and date/time model |
+| [DATABASE.md](DATABASE.md) | Database schema, migrations, and ownership model |
+| [SECURITY.md](SECURITY.md) | Security policy and private vulnerability reporting |
+| [PRIVACY.md](PRIVACY.md) | Data handling and self-hoster responsibilities |
+| [FAQ.md](FAQ.md) | Answers to common setup and deployment questions |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow and privacy requirements |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release changes |
 
-Migrations create schema, policies, functions, and a new-user bootstrap trigger. They do not contain a real account, appointment, category export, or production data dump. See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) and [DATABASE.md](DATABASE.md).
+## Privacy and security
 
-## Cloudflare deployment
+- The repository contains no author production data or backend access.
+- Every self-hoster uses and controls their own Supabase project.
+- Environment files remain local and are ignored by Git.
+- Browser code must use only a Supabase Publishable key.
+- Never expose a `service_role` key, secret key, database password, or access token.
+- RLS is mandatory and must remain enabled for user-owned data.
+- Redact personal calendar data, email addresses, account identifiers, production logs, and screenshots before posting publicly.
 
-Copy `wrangler.example.jsonc` to the ignored `wrangler.jsonc`, change its placeholder Worker name to a unique name owned by you, then follow [DEPLOYMENT.md](DEPLOYMENT.md):
+Read [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), and [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) before using real data.
+
+## Supported deployment targets
+
+- **Cloudflare/OpenNext:** supported and documented.
+- **Self-hosting with the documented stack:** supported.
+- **Vercel:** not officially supported or validated.
+
+No shared Worker, domain, Supabase project, or hosted PourAgenda service is supplied. Choose your own Worker name and keep local Wrangler configuration out of Git.
+
+## Project status
+
+- Current stable release: **v1.0.0**
+- Distribution model: source-code-only release
+- Cloudflare/OpenNext deployment: supported
+- Vercel deployment: not officially supported or validated
+- Weekly recurrence: one weekday derived from the appointment Start field
+- Known build warning: Next.js reports that the `middleware` file convention is deprecated in favor of `proxy`
+
+Reliable closed-app background reminders, multiple weekdays in one weekly recurrence rule, external calendar synchronization, and import are not currently implemented.
+
+## Development and validation
+
+Requirements: Node.js 20.9 or newer and pnpm 11.9.0.
 
 ```bash
-cp wrangler.example.jsonc wrangler.jsonc
-pnpm exec wrangler login
-pnpm preview
-pnpm deploy
-```
-
-Deployment uses your Cloudflare quota. No shared Worker, route, custom domain, or hosted PourAgenda service is supplied. Keep Wrangler credentials and `.dev.vars` out of Git.
-
-## Environment variables
-
-| Variable | Visibility | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser-visible | URL of the deployer’s Supabase project |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-visible | Publishable/legacy anon key protected by RLS |
-
-PourAgenda does not require a service-role key or database password at runtime.
-
-### Testing Environment Variables
-
-These variables are intended only for local development and test workflows. Do not use them in production environments:
-
-- `PLAYWRIGHT_BASE_URL`
-- `POURAGENDA_LAYOUT_PREVIEW`
-- `POURAGENDA_TEST_USER_A_EMAIL`
-- `POURAGENDA_TEST_USER_A_PASSWORD`
-- `POURAGENDA_TEST_USER_B_EMAIL`
-- `POURAGENDA_TEST_USER_B_PASSWORD`
-- `POURAGENDA_DELETION_TEST_EMAIL`
-- `POURAGENDA_DELETION_TEST_PASSWORD`
-
-They are read by Playwright or temporary verification scripts and should be omitted from production releases and public docs.
-
-## Testing
-
-```bash
-pnpm lint
+pnpm run scan:credentials
 pnpm typecheck
+pnpm lint
 pnpm test
 pnpm build
-pnpm test:e2e
-pnpm preview
-pnpm scan:credentials
 ```
 
-Authenticated Playwright and live RLS suites require disposable accounts created in the tester’s own Supabase project. Their ignored credentials belong in `.env.rls-test`; delete those users, test records, and the file after verification.
+Authenticated Playwright and live RLS suites require disposable accounts in the tester's own Supabase project. Never point tests at another person's backend or personal account.
 
-## PWA installation
+## Contributing and support
 
-- Chrome or Edge: open the deployed HTTPS site and choose **Install app**.
-- iPhone or iPad: open the site in Safari, choose **Share**, then **Add to Home Screen**.
+- [Report a bug](https://github.com/pour-soi/PourAgenda/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/pour-soi/PourAgenda/issues/new?template=feature_request.yml)
+- [Read the contributing guide](CONTRIBUTING.md)
+- [Report a security issue privately](SECURITY.md)
 
-The service worker caches only the offline page, manifest, icons, and immutable static assets. Offline mutations and reliable closed-app/background reminders are not implemented.
-
-## Known limitations
-
-- Supabase Realtime synchronization is not enabled; another device sees changes after refresh.
-- Reliable background reminders are not provided when the app is closed.
-- Multiple weekdays in one weekly recurrence rule and “this and following” series splitting are not implemented.
-- Import and external calendar synchronization are not implemented.
-- Operators are responsible for backups, email deliverability, quotas, legal notices, and incident response for their deployment.
-
-## Contributing and security
-
-Contributions are welcome under [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report vulnerabilities privately through [GitHub Security Advisories](SECURITY.md); do not post sensitive reports in a public issue.
+Do not include API keys, `.env` files, production logs, real appointments, email addresses, account identifiers, production URLs, or private screenshots in public Issues or pull requests.
 
 ## License
 
-PourAgenda’s original source and project artwork are licensed under the [MIT License](LICENSE). Third-party software, fonts, icons, and trademarks remain under their respective terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+PourAgenda's original source and project artwork are licensed under the [MIT License](LICENSE). Third-party software, fonts, icons, and trademarks remain under their respective terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
