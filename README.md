@@ -5,18 +5,22 @@
 [![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-356859)](https://github.com/pour-soi/PourAgenda/releases/tag/v1.0.0)
 [![MIT License](https://img.shields.io/badge/license-MIT-1f2937)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
-[![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/explore/progressive-web-apps)
+[![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![PWA](https://img.shields.io/badge/PWA-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/explore/progressive-web-apps)
 [![CI](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml/badge.svg)](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml)
 
-> **No public hosted demo is provided. PourAgenda is distributed as source code for independent self-hosting with your own Supabase and deployment account.**
+> **No public hosted demo is provided. To use PourAgenda, deploy your own copy with your own Supabase project and deployment account.**
+>
+> The repository does not provide access to the author's private deployment or database.
 
-PourAgenda is a responsive personal calendar for people who want to control their application and data. The repository contains application source, generic database migrations, tests, and self-hosting documentation. It does not provide access to the author's private deployment or database.
+PourAgenda is a responsive personal calendar for people who want to control their application and data. Each installation runs independently on infrastructure controlled by its self-hoster.
 
 ## Preview
 
 All preview images use synthetic fixture data. They contain no production account, URL, appointment, or database response.
+
+**Desktop month**
 
 ![Synthetic PourAgenda desktop month view](docs/images/pouragenda-desktop.png)
 
@@ -104,13 +108,15 @@ Before entering real data, complete the [Supabase setup guide](SUPABASE_SETUP.md
 
 ## Privacy and security
 
+- No public hosted demo or shared backend is provided.
+- The repository does not provide access to the author's private deployment or database.
 - The repository contains no author production data or backend access.
 - Every self-hoster uses and controls their own Supabase project.
 - Environment files remain local and are ignored by Git.
 - Browser code must use only a Supabase Publishable key.
 - Never expose a `service_role` key, secret key, database password, or access token.
 - RLS is mandatory and must remain enabled for user-owned data.
-- Redact personal calendar data, email addresses, account identifiers, production logs, and screenshots before posting publicly.
+- Do not share API keys, `.env` files, personal calendar data, email addresses, account identifiers, production logs, or private screenshots in public Issues.
 
 Read [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), and [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) before using real data.
 
