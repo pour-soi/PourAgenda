@@ -60,8 +60,23 @@ describe("bounded recurrence expansion", () => {
     const rows = expand([series({ all_day: true, starts_at: "2026-03-06T00:00:00Z", ends_at: "2026-03-09T00:00:00Z",
       intended_local_start: "2026-03-06", intended_local_end: "2026-03-08", recurrence_frequency: "weekly", recurrence_count: 2 })]);
     expect(rows.map((row) => (Date.parse(row.ends_at) - Date.parse(row.starts_at)) / 864e5)).toEqual([3, 3]);
+    expect(rows.map((row) => [row.intended_local_start, row.intended_local_end])).toEqual([
+      ["2026-03-06", "2026-03-08"], ["2026-03-13", "2026-03-15"],
+    ]);
     expect(recurrencePreview(series({ recurrence_frequency: "weekly", recurrence_count: 5 }), 3)).toHaveLength(3);
   });
+  it.each(["America/Los_Angeles", "America/New_York", "UTC", "Asia/Shanghai"])(
+    "keeps recurring all-day dates stable across DST and %s",
+    (timezone) => {
+      const rows = expand([series({
+        all_day: true, timezone, starts_at: "2026-03-08T00:00:00.000Z", ends_at: "2026-03-09T00:00:00.000Z",
+        intended_local_start: "2026-03-08", intended_local_end: "2026-03-08", recurrence_frequency: "weekly", recurrence_count: 2,
+      })], "2026-03-01T00:00:00.000Z", "2026-03-31T00:00:00.000Z");
+      expect(rows.map((row) => [row.intended_local_start, row.intended_local_end])).toEqual([
+        ["2026-03-08", "2026-03-08"], ["2026-03-15", "2026-03-15"],
+      ]);
+    },
+  );
   it("detects one-time, recurring, modified, and DST occurrence conflicts but ignores cancellation and adjacency", () => {
     const candidate = series({ id: "candidate", recurrence_frequency: "weekly", recurrence_count: 3 });
     const oneTime = series({ id: "one", recurrence_frequency: null, recurrence_interval: null,

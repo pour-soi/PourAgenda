@@ -314,7 +314,11 @@ export default function CalendarView({
             VIEW_STORAGE_KEY,
             arg.view.type === MOBILE_WEEK_VIEW ? "timeGridWeek" : arg.view.type,
           )}
-          select={(arg: DateSelectArg) => onSelect(arg.start, arg.end, arg.allDay)}
+          select={(arg: DateSelectArg) => onSelect(
+            arg.allDay ? calendarWallTimeToInstant(arg.start, timezone, true) : arg.start,
+            arg.allDay ? calendarWallTimeToInstant(arg.end, timezone, true) : arg.end,
+            arg.allDay,
+          )}
           eventClick={(arg: EventClickArg) => onOpen(arg.event.id)}
           eventDidMount={(arg) => {
             arg.el.dataset.appointmentId = arg.event.id;

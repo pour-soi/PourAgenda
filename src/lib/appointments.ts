@@ -41,8 +41,36 @@ export function toLocalInput(iso: string, timezone = Intl.DateTimeFormat().resol
   return `${value.year}-${value.month}-${value.day}T${value.hour}:${value.minute}`;
 }
 
+/**
+ * Appointment date model:
+ * - Timed appointments are instants. `starts_at` and `ends_at` are canonical and
+ *   are converted through the active timezone for display.
+ * - All-day appointments are calendar dates. `intended_local_start` and
+ *   `intended_local_end` are canonical and must never be reconstructed by
+ *   formatting a UTC timestamp in a timezone.
+ *
+ * All-day UTC timestamps remain database query boundaries only. They are not
+ * the source of truth for editor fields, recurrence dates, or FullCalendar.
+ */
+const dateOnly = (value: string) => value.slice(0, 10);
+
+const canonicalAllDayDate = (value: string | undefined, field: string) => {
+  if (!value) throw new Error(`All-day appointments require ${field}.`);
+  return dateOnly(value);
+};
+
+export function addCalendarDays(value: string, amount: number): string {
+  const [year, month, day] = dateOnly(value).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + amount)).toISOString().slice(0, 10);
+}
+
+export function allDayStartToUtc(value: string): string {
+  // Compatibility boundary for the timestamptz columns and range queries only.
+  return `${dateOnly(value)}T00:00:00.000Z`;
+}
+
 export function localInputToUtc(value: string, timezone: string, allDay = false): string {
-  if (allDay) return `${value.slice(0, 10)}T00:00:00.000Z`;
+  if (allDay) return allDayStartToUtc(value);
   const normalized = value;
   const [date, time] = normalized.split("T");
   const [year, month, day] = date.split("-").map(Number);
@@ -60,15 +88,41 @@ export function localInputToUtc(value: string, timezone: string, allDay = false)
 }
 
 export function allDayEndToUtc(value: string): string {
-  const end = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return end.toISOString();
+  return allDayStartToUtc(addCalendarDays(value, 1));
 }
 
-export function allDayEndToInput(value: string): string {
-  const end = new Date(value);
-  end.setUTCDate(end.getUTCDate() - 1);
-  return end.toISOString().slice(0, 10);
+export function allDayEndToInput(exclusiveCalendarEnd: string): string {
+  // FullCalendar uses an exclusive date-only end; the editor uses an inclusive end.
+  return addCalendarDays(exclusiveCalendarEnd, -1);
+}
+
+type AllDayRangeSource = Pick<Appointment, "starts_at" | "ends_at" | "intended_local_start" | "intended_local_end">;
+
+export function allDayEditorRange(value: AllDayRangeSource) {
+  return {
+    start: canonicalAllDayDate(value.intended_local_start, "intended_local_start"),
+    end: canonicalAllDayDate(value.intended_local_end, "intended_local_end"),
+  };
+}
+
+export function allDayStorageRange(start: string, inclusiveEnd: string) {
+  return {
+    starts_at: allDayStartToUtc(start),
+    ends_at: allDayEndToUtc(inclusiveEnd),
+    intended_local_start: dateOnly(start),
+    intended_local_end: dateOnly(inclusiveEnd),
+  };
+}
+
+export function allDayCalendarRange(value: AllDayRangeSource) {
+  const range = allDayEditorRange(value);
+  return { start: range.start, end: addCalendarDays(range.end, 1) };
+}
+
+export function inclusiveCalendarDayCount(start: string, inclusiveEnd: string): number {
+  const startMs = Date.parse(`${dateOnly(start)}T00:00:00.000Z`);
+  const endMs = Date.parse(`${dateOnly(inclusiveEnd)}T00:00:00.000Z`);
+  return Math.max(1, Math.round((endMs - startMs) / 864e5) + 1);
 }
 
 export function appointmentError(error: { code?: string }): string {

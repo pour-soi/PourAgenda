@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendarWallTimeToInstant, preferredCalendarScrollTime, responsiveCalendarView } from "./calendar-view";
+import { allDayCalendarRange, allDayStorageRange } from "@/lib/appointments";
 
 describe("responsive calendar view selection", () => {
   it("uses a readable one-day week below the mobile breakpoint", () => {
@@ -48,5 +49,14 @@ describe("active-timezone calendar movement", () => {
   it("preserves all-day calendar dates without a timezone shift", () => {
     const displayed = new Date(2026, 6, 29, 0, 0);
     expect(calendarWallTimeToInstant(displayed, "America/Los_Angeles", true).toISOString()).toBe("2026-07-29T00:00:00.000Z");
+  });
+
+  it("gives FullCalendar date-only inclusive ranges instead of UTC instants", () => {
+    expect(allDayCalendarRange(allDayStorageRange("2026-08-02", "2026-08-02"))).toEqual({
+      start: "2026-08-02", end: "2026-08-03",
+    });
+    expect(allDayCalendarRange(allDayStorageRange("2026-08-02", "2026-08-04"))).toEqual({
+      start: "2026-08-02", end: "2026-08-05",
+    });
   });
 });

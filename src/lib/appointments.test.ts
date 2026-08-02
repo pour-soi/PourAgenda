@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allDayEndToInput, allDayEndToUtc, appointmentError, appointmentInput, findConflicts, isStaleEdit, localInputToUtc, toLocalInput, undoAppointmentValues } from "./appointments";
+import { allDayCalendarRange, allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, inclusiveCalendarDayCount, isStaleEdit, localInputToUtc, toLocalInput, undoAppointmentValues } from "./appointments";
 import type { Appointment } from "@/types/domain";
 
 const appointment: Appointment = {
@@ -50,6 +50,40 @@ describe("appointment guarantees", () => {
   it("stores inclusive all-day end dates as an exclusive UTC boundary", () => {
     expect(allDayEndToUtc("2026-07-01")).toBe("2026-07-02T00:00:00.000Z");
     expect(allDayEndToInput("2026-07-02T00:00:00.000Z")).toBe("2026-07-01");
+  });
+  it("keeps same-day and multi-day all-day ranges inclusive in the editor and exclusive for FullCalendar", () => {
+    const sameDay = allDayStorageRange("2026-08-02", "2026-08-02");
+    expect(sameDay).toEqual({
+      starts_at: "2026-08-02T00:00:00.000Z", ends_at: "2026-08-03T00:00:00.000Z",
+      intended_local_start: "2026-08-02", intended_local_end: "2026-08-02",
+    });
+    expect(allDayEditorRange(sameDay)).toEqual({ start: "2026-08-02", end: "2026-08-02" });
+    expect(allDayCalendarRange(sameDay)).toEqual({ start: "2026-08-02", end: "2026-08-03" });
+
+    const multiDay = allDayStorageRange("2026-08-02", "2026-08-04");
+    expect(allDayEditorRange(multiDay)).toEqual({ start: "2026-08-02", end: "2026-08-04" });
+    expect(allDayCalendarRange(multiDay)).toEqual({ start: "2026-08-02", end: "2026-08-05" });
+    expect(inclusiveCalendarDayCount("2026-08-02", "2026-08-04")).toBe(3);
+  });
+  it.each([
+    ["America/Los_Angeles", "2026-03-08", "2026-03-08"],
+    ["America/New_York", "2026-11-01", "2026-11-02"],
+    ["UTC", "2026-08-02", "2026-08-04"],
+    ["Asia/Shanghai", "2026-08-02", "2026-08-02"],
+  ])("round-trips all-day calendar dates in %s without applying its offset", (timezone, start, end) => {
+    const stored = { ...allDayStorageRange(start, end), timezone };
+    const editor = allDayEditorRange(stored);
+    expect(editor).toEqual({ start, end });
+    expect(allDayStorageRange(editor.start, editor.end)).toEqual(allDayStorageRange(start, end));
+  });
+  it("uses canonical all-day dates even when UTC timestamps point at different calendar dates", () => {
+    expect(allDayEditorRange({
+      starts_at: "2026-08-01T00:00:00.000Z", ends_at: "2026-08-06T00:00:00.000Z",
+      intended_local_start: "2026-08-02 00:00:00", intended_local_end: "2026-08-04 00:00:00",
+    })).toEqual({ start: "2026-08-02", end: "2026-08-04" });
+    expect(() => allDayEditorRange({
+      starts_at: "2026-08-02T00:00:00.000Z", ends_at: "2026-08-03T00:00:00.000Z",
+    })).toThrow("intended_local_start");
   });
   it("restores the exact pre-action archive and cancellation state", () => {
     expect(undoAppointmentValues("archive", appointment)).toEqual({ archived: false });

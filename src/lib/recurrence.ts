@@ -1,4 +1,4 @@
-import { localInputToUtc, toLocalInput } from "./appointments";
+import { addCalendarDays, allDayEditorRange, inclusiveCalendarDayCount, localInputToUtc, toLocalInput } from "./appointments";
 import type { Appointment, AppointmentOccurrence } from "@/types/domain";
 
 export const MAX_RECURRENCE_OCCURRENCES = 500;
@@ -94,11 +94,8 @@ export function expandAppointments(
       continue;
     }
     const duration = new Date(row.ends_at).getTime() - new Date(row.starts_at).getTime();
-    const allDaySpan = row.all_day
-      ? Math.max(1, Math.round((Date.parse(`${(row.intended_local_end ?? row.ends_at).slice(0, 10)}T00:00:00Z`)
-        - Date.parse(`${(row.intended_local_start ?? row.starts_at).slice(0, 10)}T00:00:00Z`)) / 864e5)
-        + (row.intended_local_end ? 1 : 0))
-      : 0;
+    const allDayRange = row.all_day ? allDayEditorRange(row) : null;
+    const allDaySpan = allDayRange ? inclusiveCalendarDayCount(allDayRange.start, allDayRange.end) : 0;
     const hardIterations = 100_000;
     for (let index = 0; index < hardIterations; index += 1) {
       if (row.recurrence_count && index >= row.recurrence_count) break;
@@ -111,11 +108,12 @@ export function expandAppointments(
       const exception = exceptions.get(`${row.id}:${originalKey}`);
       if (exception) add(exception, `${row.id}:${originalKey}`, row.id, false);
       else {
-        const allDayEnd = new Date(`${localStart.slice(0, 10)}T00:00:00Z`);
-        allDayEnd.setUTCDate(allDayEnd.getUTCDate() + allDaySpan);
+        const allDayInclusiveEnd = addCalendarDays(localStart, allDaySpan - 1);
         add({ ...row, id: `${row.id}:${originalKey}`, starts_at: startsAt,
-        ends_at: row.all_day ? localInputToUtc(allDayEnd.toISOString().slice(0, 10), row.timezone, true)
+        ends_at: row.all_day ? localInputToUtc(addCalendarDays(allDayInclusiveEnd, 1), row.timezone, true)
           : new Date(startsMs + duration).toISOString(), series_id: row.id,
+        intended_local_start: row.all_day ? localStart.slice(0, 10) : row.intended_local_start,
+        intended_local_end: row.all_day ? allDayInclusiveEnd : row.intended_local_end,
         original_occurrence_start: originalKey }, `${row.id}:${originalKey}`, row.id, true);
       }
       if (index === hardIterations - 1) throw new Error("Recurrence expansion exceeded the iteration safety guard.");

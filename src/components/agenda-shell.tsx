@@ -11,7 +11,7 @@ import { GlobalEventSearch } from "@/components/global-event-search";
 import { QuickAdd } from "@/components/quick-add";
 import { EnglishDateTimePicker, type TimeFormat } from "@/components/date-time-picker";
 import { formatDate, formatDateTime, formatTime, resolveTimeFormat, type TimeFormatPreference } from "@/lib/date-format";
-import { allDayEndToInput, allDayEndToUtc, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
+import { allDayCalendarRange, allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStartToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
 import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
 import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrenceSummary } from "@/lib/recurrence";
@@ -278,9 +278,10 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     setSeriesParentId(parentId);
     setEditing(current);
     endOverridden.current = true;
+    const allDayRange = current.all_day ? allDayEditorRange(current) : null;
     setDraft({ title: current.title, category_id: current.category_id,
-      starts_at: current.all_day ? current.starts_at.slice(0, 10) : toLocalInput(current.starts_at, timezone),
-      ends_at: current.all_day ? allDayEndToInput(current.ends_at) : toLocalInput(current.ends_at, timezone),
+      starts_at: allDayRange?.start ?? toLocalInput(current.starts_at, timezone),
+      ends_at: allDayRange?.end ?? toLocalInput(current.ends_at, timezone),
       all_day: current.all_day, location: current.location ?? "",
       public_notes: current.public_notes ?? "", private_notes: current.private_notes ?? "",
       recurrence_frequency: parentId && occurrenceScope ? "" : current.recurrence_frequency ?? "",
@@ -314,15 +315,18 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     dialog?.addEventListener("keydown", keydown);
     return () => dialog?.removeEventListener("keydown", keydown);
   }, [closeRecurringEditChoice, recurringEditChoice]);
-  const iso = (value: string, allDay: boolean, isEnd = false) => allDay && isEnd ? allDayEndToUtc(value) : localInputToUtc(value, timezone, allDay);
+  const iso = (value: string, allDay: boolean, isEnd = false) => allDay
+    ? isEnd ? allDayEndToUtc(value) : allDayStartToUtc(value)
+    : localInputToUtc(value, timezone);
   async function save(event?: FormEvent, forceConflict = false) {
     event?.preventDefault();
     if (pending || !navigator.onLine) {
       if (!navigator.onLine) setMessage("Reconnect before saving this appointment.");
       return;
     }
-    const parsed = appointmentInput.safeParse({ ...draft, starts_at: iso(draft.starts_at, draft.all_day),
-      ends_at: iso(draft.ends_at, draft.all_day, true), timezone });
+    const allDayRange = draft.all_day ? allDayStorageRange(draft.starts_at, draft.ends_at) : null;
+    const parsed = appointmentInput.safeParse({ ...draft, starts_at: allDayRange?.starts_at ?? iso(draft.starts_at, false),
+      ends_at: allDayRange?.ends_at ?? iso(draft.ends_at, false), timezone });
     if (!parsed.success) return setMessage(parsed.error.issues[0]?.message ?? "Check the appointment.");
     if (draft.recurrence_frequency && (!Number.isInteger(draft.recurrence_interval) || draft.recurrence_interval < 1 || draft.recurrence_interval > 52)) {
       return setMessage("Repeat interval must be between 1 and 52.");
@@ -341,7 +345,8 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
       reminder_minutes: normalizeReminderMinutes(draft.reminder_minutes),
       location: parsed.data.location || null, phone: editing?.phone ?? null, email: editing?.email ?? null,
       public_notes: parsed.data.public_notes || null, private_notes: parsed.data.private_notes || null,
-      intended_local_start: draft.starts_at.replace("T", " "), intended_local_end: draft.ends_at.replace("T", " "),
+      intended_local_start: allDayRange?.intended_local_start ?? draft.starts_at.replace("T", " "),
+      intended_local_end: allDayRange?.intended_local_end ?? draft.ends_at.replace("T", " "),
       completed_at: editing?.completed_at ?? null,
       cancelled_at: editing?.cancelled_at ?? null,
       recurrence_frequency: editScope === "occurrence" ? null : draft.recurrence_frequency || null,
@@ -550,12 +555,15 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     const item = appointments.find((value) => value.occurrence_id === id);
     if (!item) return revert();
     if (item.series_parent_id && !window.confirm("Move or resize this occurrence only? The rest of the series will not change.")) return revert();
-    const candidate = { id, starts_at: start.toISOString(), ends_at: end.toISOString() };
+    const movedAllDayRange = item.all_day
+      ? allDayStorageRange(start.toISOString().slice(0, 10), allDayEndToInput(end.toISOString()))
+      : null;
+    const candidate = { id, starts_at: movedAllDayRange?.starts_at ?? start.toISOString(), ends_at: movedAllDayRange?.ends_at ?? end.toISOString() };
     if (findConflicts(candidate, appointments).length && !window.confirm("This time overlaps another appointment. Save anyway?")) return revert();
     const values = {
       starts_at: candidate.starts_at, ends_at: candidate.ends_at,
-      intended_local_start: toLocalInput(candidate.starts_at, timezone).replace("T", " "),
-      intended_local_end: toLocalInput(candidate.ends_at, timezone).replace("T", " "),
+      intended_local_start: movedAllDayRange?.intended_local_start ?? toLocalInput(candidate.starts_at, timezone).replace("T", " "),
+      intended_local_end: movedAllDayRange?.intended_local_end ?? toLocalInput(candidate.ends_at, timezone).replace("T", " "),
     };
     const { occurrence_id: _occurrenceId, series_parent_id: _seriesParentId, is_generated_occurrence: _generated, ...databaseItem } = item;
     void _occurrenceId; void _seriesParentId; void _generated;
@@ -575,7 +583,8 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
   const calendarEvents = appointments.map((item) => {
     const categoryData = categories.find((value) => value.id === item.category_id);
     const color = categoryData?.color ?? "#667168";
-    return { id: item.occurrence_id, title: item.title, start: item.starts_at, end: item.ends_at,
+    const allDayRange = item.all_day ? allDayCalendarRange(item) : null;
+    return { id: item.occurrence_id, title: item.title, start: allDayRange?.start ?? item.starts_at, end: allDayRange?.end ?? item.ends_at,
       allDay: item.all_day, backgroundColor: color, borderColor: color, textColor: contrastingText(color),
       classNames: item.status === "cancelled" ? ["appointment-cancelled"] : [],
       extendedProps: {

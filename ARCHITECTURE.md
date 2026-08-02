@@ -17,6 +17,31 @@ Edits, status changes, drag, resize, archive, restore, and permanent deletion co
 
 Long lists are separate from calendar range queries. Upcoming, Today, This week, Completed, Cancelled, and Archived use bounded keyset pages with a stable timestamp-and-ID order. Filter changes reset the cursor. Archive and cancel provide a short Undo window; a failed Undo reloads current server state.
 
+## Appointment date model
+
+PourAgenda has two distinct date models. They must not be combined or converted through the same display path.
+
+### Timed appointments are instants
+
+Timed appointments represent a real moment. `starts_at` and `ends_at` are the canonical timezone-aware timestamps. The stored instant does not change when the viewer changes timezone; only its displayed wall time changes. For example, Aug 2 at 2:00 PM in San Francisco is the same instant as Aug 2 at 5:00 PM in New York.
+
+Timed appointment editor values are converted between the selected timezone and the stored instant. Existing timezone and DST conversion logic applies only to this appointment type.
+
+### All-day appointments are calendar dates
+
+All-day appointments represent calendar dates, not instants. `intended_local_start` and `intended_local_end` are the canonical values. Their `YYYY-MM-DD` portions must be used directly by the editor, recurrence expansion, lists, search, and calendar integration. They must never be obtained by formatting `starts_at` or `ends_at` in UTC or in a user timezone.
+
+The `starts_at` and `ends_at` columns remain populated for database constraints, overlap queries, and compatibility with the existing schema. For all-day rows they are boundary values only, not display values. A same-day Aug 2 appointment uses an Aug 2 start boundary and an Aug 3 exclusive end boundary, while both canonical intended dates remain Aug 2.
+
+FullCalendar receives date-only strings for all-day events. Its end is exclusive, so an inclusive user range of Aug 2 through Aug 4 is rendered as `start: 2026-08-02` and `end: 2026-08-05`. This exclusive conversion exists only at the FullCalendar boundary. The appointment editor must continue showing Aug 4 as the End date.
+
+These invariants apply in every timezone and across DST boundaries:
+
+- Timed appointment: preserve the instant and convert the displayed wall time.
+- All-day appointment: preserve the selected calendar dates and never apply a timezone offset.
+- Recurring all-day appointment: generate new canonical intended dates for every occurrence.
+- Missing all-day intended dates are invalid application data; do not silently reconstruct them from UTC timestamps.
+
 ## Phase 3 recurrence flow
 
 A recurring parent remains one `appointments` row. Generated occurrences exist only in memory and use the deterministic identity `series-id:original-UTC-start`. A modified or cancelled occurrence is another appointment row referencing `series_id` and `original_occurrence_start`; the database uniqueness constraint prevents duplicate exceptions.
