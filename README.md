@@ -1,6 +1,6 @@
 # PourAgenda
 
-**A privacy-first, self-hosted calendar and appointment PWA built with Next.js, Supabase, and Cloudflare.**
+**Privacy-first self-hosted calendar and appointment PWA.**
 
 [![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-356859)](https://github.com/pour-soi/PourAgenda/releases/tag/v1.0.0)
 [![MIT License](https://img.shields.io/badge/license-MIT-1f2937)](LICENSE)
@@ -10,56 +10,35 @@
 [![PWA](https://img.shields.io/badge/PWA-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/explore/progressive-web-apps)
 [![CI](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml/badge.svg)](https://github.com/pour-soi/PourAgenda/actions/workflows/ci.yml)
 
-> **No public hosted demo is provided. To use PourAgenda, deploy your own copy with your own Supabase project and deployment account.**
->
-> The repository does not provide access to the author's private deployment or database.
-
-PourAgenda is a responsive personal calendar for people who want to control their application and data. Each installation runs independently on infrastructure controlled by its self-hoster.
-
 ## Preview
 
-All preview images use synthetic fixture data. They contain no production account, URL, appointment, or database response.
+| Desktop Month View | Mobile Month View | Mobile Week View |
+| --- | --- | --- |
+| ![Synthetic desktop month view](docs/images/pouragenda-desktop.png) | ![Synthetic mobile month view](docs/images/pouragenda-mobile.png) | ![Synthetic mobile week view](docs/images/pouragenda-mobile-week.png) |
 
-**Desktop month**
+PourAgenda is a modern calendar for people who want complete ownership of their schedule. It combines focused appointment tools with responsive calendar views and infrastructure controlled by the self-hoster.
 
-![Synthetic PourAgenda desktop month view](docs/images/pouragenda-desktop.png)
+> **No public hosted service is provided. Create your own Supabase project and deploy your own PourAgenda instance.**
 
-| Mobile month | Mobile week |
-| --- | --- |
-| ![Synthetic PourAgenda mobile month view](docs/images/pouragenda-mobile.png) | ![Synthetic PourAgenda mobile week view](docs/images/pouragenda-mobile-week.png) |
+The preview uses synthetic fixture data and contains no production account, URL, appointment, or database response.
 
 ## Features
 
-### Calendar and appointments
+| Calendar | Appointments | Organization | Privacy |
+| --- | --- | --- | --- |
+| Month, week, day, and agenda views | Timed and all-day appointments | Categories and color coding | Supabase authentication |
+| Responsive desktop and mobile layouts | Daily, weekly, and monthly recurrence | Atomic category Move & Delete | Row Level Security |
+| Timezone-aware timed appointments | Quick Add and default duration | Search, lists, and filters | User-scoped data isolation |
+| Timezone-stable all-day dates | 12-hour, 24-hour, and system time | CSV, JSON, and iCalendar export | Self-hosted installable PWA |
 
-- Month, week, day, and agenda views
-- Timed and all-day appointments with create, edit, and delete workflows
-- Responsive mobile and desktop layouts
-- Timezone-aware timed appointments
-- Date-only all-day appointments that remain stable across timezones
-- Search, conflict checks, drag, and resize on supported desktop views
+## Tech Stack
 
-### Productivity
-
-- Quick Add and saved default appointment duration
-- Daily, weekly, and monthly recurring appointments
-- Accessible recurrence edit-scope dialog
-- 12-hour, 24-hour, and Follow system time formats
-- CSV, JSON, and iCalendar export
-
-### Organization
-
-- Category-only organization and category colors
-- Atomic category replacement with Move & Delete
-- Appointment lists and category filtering
-
-### Privacy and self-hosting
-
-- Supabase email/password authentication
-- PostgreSQL Row Level Security (RLS)
-- User-scoped data isolation
-- Independent deployment with no owner backend access
-- Installable PWA with a deliberately limited offline shell
+| Frontend | Backend | Deployment | Quality |
+| --- | --- | --- | --- |
+| Next.js 16 | Supabase Auth | Cloudflare Workers | Vitest |
+| React 19 | PostgreSQL with RLS | OpenNext | Playwright |
+| TypeScript | Repository migrations | Wrangler | Credential scanning |
+| FullCalendar | User-scoped policies | Source-only deployment | GitHub Actions |
 
 ## Quick Start
 
@@ -67,10 +46,10 @@ All preview images use synthetic fixture data. They contain no production accoun
 2. Enable Corepack and install dependencies.
 3. Create a Supabase project that you own.
 4. Copy `.env.example` to `.env.local`.
-5. Add your own Supabase Project URL and Publishable key.
-6. Apply the repository migrations by following [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
-7. Start the local application with `pnpm dev`.
-8. Follow [DEPLOYMENT.md](DEPLOYMENT.md) when you are ready to deploy.
+5. Add your own Project URL and Publishable key.
+6. Apply the repository migrations.
+7. Run PourAgenda locally.
+8. Follow [DEPLOYMENT.md](DEPLOYMENT.md) to deploy your own instance.
 
 ```bash
 git clone https://github.com/pour-soi/PourAgenda.git
@@ -81,67 +60,47 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Use placeholders only until you replace them locally with values from your own project:
-
-```dotenv
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
-```
-
-Before entering real data, complete the [Supabase setup guide](SUPABASE_SETUP.md) and [self-hosting checklist](SELF_HOSTING_CHECKLIST.md).
+See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for project creation, environment configuration, migrations, Auth, and RLS verification.
 
 ## Documentation
 
-| Document | Purpose |
+| Area | Documentation |
 | --- | --- |
-| [README.md](README.md) | Product overview and quick start |
-| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | Create and secure an independent Supabase backend |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy with Cloudflare/OpenNext or run the supported stack yourself |
-| [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) | Pre-launch privacy, security, and operations checklist |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Application architecture and date/time model |
-| [DATABASE.md](DATABASE.md) | Database schema, migrations, and ownership model |
-| [SECURITY.md](SECURITY.md) | Security policy and private vulnerability reporting |
-| [PRIVACY.md](PRIVACY.md) | Data handling and self-hoster responsibilities |
-| [FAQ.md](FAQ.md) | Answers to common setup and deployment questions |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow and privacy requirements |
-| [CHANGELOG.md](CHANGELOG.md) | Version history and release changes |
+| Getting Started | [Supabase Setup](SUPABASE_SETUP.md), [Self-Hosting Checklist](SELF_HOSTING_CHECKLIST.md), and [FAQ](FAQ.md) |
+| Architecture | [Architecture](ARCHITECTURE.md) and [Database](DATABASE.md) |
+| Deployment | [Cloudflare and Self-Hosting](DEPLOYMENT.md) |
+| Security | [Security Policy](SECURITY.md) and [Privacy](PRIVACY.md) |
+| Contributing | [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) |
+| Release Notes | [v1.0.0 Release Notes](RELEASE_NOTES.md) and [Changelog](CHANGELOG.md) |
 
-## Privacy and security
+## Privacy
 
-- No public hosted demo or shared backend is provided.
-- The repository does not provide access to the author's private deployment or database.
-- The repository contains no author production data or backend access.
-- Every self-hoster uses and controls their own Supabase project.
-- Environment files remain local and are ignored by Git.
-- Browser code must use only a Supabase Publishable key.
-- Never expose a `service_role` key, secret key, database password, or access token.
-- RLS is mandatory and must remain enabled for user-owned data.
-- Do not share API keys, `.env` files, personal calendar data, email addresses, account identifiers, production logs, or private screenshots in public Issues.
+- No public hosted demo, owner backend, or owner database is provided.
+- Every installation uses a Supabase project and deployment account controlled by its self-hoster.
+- Environment files stay local; browser code must use only a Supabase Publishable key.
+- RLS must remain enabled for user-owned data.
+- Never submit API keys, `.env` files, personal calendar data, production logs, or private screenshots in public Issues or pull requests.
 
-Read [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), and [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) before using real data.
+Read [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), and [SELF_HOSTING_CHECKLIST.md](SELF_HOSTING_CHECKLIST.md) before entering real data.
 
-## Supported deployment targets
+## Deployment and project status
 
 - **Cloudflare/OpenNext:** supported and documented.
 - **Self-hosting with the documented stack:** supported.
 - **Vercel:** not officially supported or validated.
+- **Current stable release:** v1.0.0, distributed as source code only.
+- **Weekly recurrence:** one weekday derived from the appointment Start field.
 
-No shared Worker, domain, Supabase project, or hosted PourAgenda service is supplied. Choose your own Worker name and keep local Wrangler configuration out of Git.
+Known limitation: Next.js reports that the `middleware` file convention is deprecated in favor of `proxy`. Reliable closed-app background reminders, multiple weekdays in one weekly recurrence rule, external calendar synchronization, and import are not currently implemented.
 
-## Project status
+## Community
 
-- Current stable release: **v1.0.0**
-- Distribution model: source-code-only release
-- Cloudflare/OpenNext deployment: supported
-- Vercel deployment: not officially supported or validated
-- Weekly recurrence: one weekday derived from the appointment Start field
-- Known build warning: Next.js reports that the `middleware` file convention is deprecated in favor of `proxy`
+- [Report a bug](https://github.com/pour-soi/PourAgenda/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/pour-soi/PourAgenda/issues/new?template=feature_request.yml)
+- [Read the contributing guide](CONTRIBUTING.md)
+- [Report a security issue privately](SECURITY.md)
 
-Reliable closed-app background reminders, multiple weekdays in one weekly recurrence rule, external calendar synchronization, and import are not currently implemented.
-
-## Development and validation
-
-Requirements: Node.js 20.9 or newer and pnpm 11.9.0.
+## Development checks
 
 ```bash
 pnpm run scan:credentials
@@ -151,17 +110,10 @@ pnpm test
 pnpm build
 ```
 
-Authenticated Playwright and live RLS suites require disposable accounts in the tester's own Supabase project. Never point tests at another person's backend or personal account.
-
-## Contributing and support
-
-- [Report a bug](https://github.com/pour-soi/PourAgenda/issues/new?template=bug_report.yml)
-- [Request a feature](https://github.com/pour-soi/PourAgenda/issues/new?template=feature_request.yml)
-- [Read the contributing guide](CONTRIBUTING.md)
-- [Report a security issue privately](SECURITY.md)
-
-Do not include API keys, `.env` files, production logs, real appointments, email addresses, account identifiers, production URLs, or private screenshots in public Issues or pull requests.
-
 ## License
 
 PourAgenda's original source and project artwork are licensed under the [MIT License](LICENSE). Third-party software, fonts, icons, and trademarks remain under their respective terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+---
+
+Made for people who value privacy, ownership, and self-hosting.
