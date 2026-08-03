@@ -165,6 +165,31 @@ describe("deterministic Quick Add", () => {
     expect(parseQuickAdd("Dinner Sat 7pm", "UTC", now)).toMatchObject({ title: "Dinner", dateKey: "2026-08-01", time: "19:00", status: "complete" });
     expect(parseQuickAdd("Every Tuesday WFH", "UTC", now)).toMatchObject({ title: "WFH", dateKey: "2026-08-04", recurrenceFrequency: "weekly", status: "partial" });
   });
+
+  it("extracts a street address, numeric date, and compact time from the requested example", () => {
+    expect(parseQuickAdd("255 Howth Street client 8/15 4pm", "UTC", now)).toMatchObject({
+      title: "client", location: "255 Howth Street", dateKey: "2026-08-15", time: "16:00", status: "complete",
+    });
+  });
+
+  it.each([
+    ["Planning tomorrow", { title: "Planning", dateKey: "2026-07-31", time: null }],
+    ["Planning 4:30", { title: "Planning", dateKey: null, time: "04:30" }],
+    ["Planning 430pm", { title: "Planning", time: "16:30" }],
+    ["Planning 16:00", { title: "Planning", time: "16:00" }],
+    ["Planning 255 Howth Rd", { title: "Planning", location: "255 Howth Rd" }],
+    ["Airport pickup", { title: "pickup", location: "Airport" }],
+    ["Planning tomorrow 30m", { title: "Planning", durationMinutes: 30 }],
+    ["Planning tomorrow 30 min", { title: "Planning", durationMinutes: 30 }],
+    ["Planning tomorrow 1h", { title: "Planning", durationMinutes: 60 }],
+    ["Planning tomorrow 90 minutes", { title: "Planning", durationMinutes: 90 }],
+  ])("structures %s", (input, expected) => expect(parseQuickAdd(input, "UTC", now)).toMatchObject(expected));
+
+  it("leaves ambiguous text in the title and leaves default duration unspecified", () => {
+    expect(parseQuickAdd("Meet near the old building next week", "UTC", now)).toMatchObject({
+      title: "Meet near the old building next week", dateKey: null, time: null, location: null, durationMinutes: null,
+    });
+  });
 });
 
 describe("event search", () => {

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "node:path";
 
 const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
 
@@ -12,10 +13,15 @@ export default defineConfig({
   webServer: externalBaseURL
     ? undefined
     : {
-        command: "pnpm dev",
+        command: "node node_modules/next/dist/bin/next dev --webpack",
         url: "http://localhost:3000",
         reuseExistingServer: true,
-        env: { POURAGENDA_LAYOUT_PREVIEW: "1" },
+        env: {
+          POURAGENDA_LAYOUT_PREVIEW: "1",
+          NEXT_FONT_GOOGLE_MOCKED_RESPONSES: path.resolve(
+            "tests/e2e/next-font-mocked-responses.cjs",
+          ),
+        },
       },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },

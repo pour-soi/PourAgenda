@@ -211,6 +211,8 @@ export type QuickAddResult = {
   title: string;
   dateKey: string | null;
   time: string | null;
+  durationMinutes: number | null;
+  location: string | null;
   status: "complete" | "partial" | "unsupported";
   explanation: string;
   recurrenceFrequency: "weekly" | null;
@@ -246,6 +248,8 @@ export function parseQuickAdd(
   const today = zonedDateKey(now, timezone);
   let dateKey: string | null = null;
   let time: string | null = null;
+  let durationMinutes: number | null = null;
+  let location: string | null = null;
   let remainder = original;
   let recurrenceFrequency: "weekly" | null = null;
 
@@ -265,15 +269,56 @@ export function parseQuickAdd(
     remainder = remainder.replace(relative[0], "");
   }
 
+  const duration = /\b(\d{1,4})\s*(m|min|mins|minutes?|h|hours?)\b/i.exec(remainder);
+  if (duration) {
+    const amount = Number(duration[1]);
+    durationMinutes = /^h/i.test(duration[2]) ? amount * 60 : amount;
+    if (durationMinutes > 0) remainder = remainder.replace(duration[0], "");
+    else durationMinutes = null;
+  }
+
+  const address = /\b(\d{1,6}\s+(?:[A-Za-z][A-Za-z0-9.'-]*\s+){0,5}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr))\b/i.exec(remainder);
+  if (address) {
+    location = address[1];
+    remainder = remainder.replace(address[0], "");
+  } else {
+    const airport = /\bAirport\b/i.exec(remainder);
+    if (airport) {
+      location = airport[0];
+      remainder = remainder.replace(airport[0], "");
+    }
+  }
+
+  if (!dateKey) {
+    const numericDate = /\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\b/.exec(remainder);
+    if (numericDate) {
+      const month = Number(numericDate[1]) - 1;
+      const day = Number(numericDate[2]);
+      const currentYear = Number(today.slice(0, 4));
+      const candidate = new Date(Date.UTC(currentYear, month, day, 12));
+      if (candidate.getUTCMonth() === month && candidate.getUTCDate() === day) {
+        dateKey = candidate.toISOString().slice(0, 10);
+        if (dateKey < today) dateKey = `${currentYear + 1}-${dateKey.slice(5)}`;
+        remainder = remainder.replace(numericDate[0], "");
+      }
+    }
+  }
+
   const noon = /\bnoon\b/i.exec(remainder);
   if (noon) {
     time = "12:00";
     remainder = remainder.replace(noon[0], "");
   }
-  const clock = /\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(remainder);
+  const clock = /\b(?:at\s+)?(?:(\d{1,2}):(\d{2})|(\d{1,2})(\d{2})|(\d{1,2}))\s*(am|pm)\b/i.exec(remainder);
   if (clock) {
-    time = parseClock(clock[1], clock[2], clock[3].toLowerCase());
-    remainder = remainder.replace(clock[0], "");
+    time = parseClock(clock[1] ?? clock[3] ?? clock[5], clock[2] ?? clock[4], clock[6].toLowerCase());
+    if (time) remainder = remainder.replace(clock[0], "");
+  } else {
+    const clock24 = /\b(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b/i.exec(remainder);
+    if (clock24) {
+      time = `${Number(clock24[1]).toString().padStart(2, "0")}:${clock24[2]}`;
+      remainder = remainder.replace(clock24[0], "");
+    }
   }
 
   if (!dateKey && /\btoday\b/i.test(remainder)) {
@@ -311,14 +356,14 @@ export function parseQuickAdd(
     }
   }
 
-  const title = remainder.replace(/\bat\b/gi, "").replace(/\s+/g, " ").trim() || original;
+  const title = remainder.replace(/^[\s,;-]+|[\s,;-]+$/g, "").replace(/\s+/g, " ").trim() || original;
   if (!dateKey) {
-    return { title, dateKey: null, time, recurrenceFrequency, status: "unsupported", explanation: "Choose a date and time before saving." };
+    return { title, dateKey: null, time, durationMinutes, location, recurrenceFrequency, status: "unsupported", explanation: time ? "Time recognized. Choose a date before saving." : "Choose a date and time before saving." };
   }
   if (!time) {
-    return { title, dateKey, time: null, recurrenceFrequency, status: "partial", explanation: "Date recognized. Choose a time before saving." };
+    return { title, dateKey, time: null, durationMinutes, location, recurrenceFrequency, status: "partial", explanation: "Date recognized. Choose a time before saving." };
   }
-  return { title, dateKey, time, recurrenceFrequency, status: "complete", explanation: "Date and time recognized. Review before saving." };
+  return { title, dateKey, time, durationMinutes, location, recurrenceFrequency, status: "complete", explanation: "Date and time recognized. Review before saving." };
 }
 
 export type SearchableEvent = {

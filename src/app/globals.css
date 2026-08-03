@@ -379,19 +379,27 @@ button, a, input, select { min-height: var(--touch); }
 }
 .day-all-day-note { margin: 0; color: var(--muted); font-size: .75rem; }
 .date-time-picker { position: relative; margin-top: .25rem; }
-.date-time-picker-field { position: relative; }
-.date-time-picker-field input {
+.date-time-picker-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.date-time-picker-controls[data-date-only] { grid-template-columns: minmax(0, 1fr); }
+.date-time-picker-control { display: grid; min-width: 0; gap: .375rem; }
+.date-time-picker-control > span { color: var(--muted); font-size: .8125rem; font-weight: 650; }
+.date-time-picker-control > button {
+  display: flex;
   width: 100%;
   min-height: 44px;
-  padding: .625rem 2.5rem .625rem .75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .625rem .75rem;
   border: 1px solid var(--border);
   border-radius: .5rem;
   background: var(--background);
   color: var(--foreground);
   cursor: pointer;
+  text-align: left;
 }
-.date-time-picker-field svg { position: absolute; top: 50%; right: .75rem; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
-.date-time-picker-error { display: block; margin-top: .25rem; color: #b91c1c; font-size: .8125rem; }
+.date-time-picker-control > button svg { flex: 0 0 auto; color: var(--muted); }
+.date-time-picker-control > button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .date-time-picker-popover {
   position: absolute;
   z-index: 60;
@@ -423,12 +431,11 @@ button, a, input, select { min-height: var(--touch); }
   border-top: 1px solid var(--border);
 }
 .date-time-picker-time legend { font-size: .9375rem; font-weight: 700; }
-.time-direct-control,
 .time-period-control { display: grid; min-width: 0; gap: .4375rem; color: var(--muted); }
 .time-period-control { grid-column: 1 / -1; }
-.time-direct-label,
 .time-period-control > span { font-size: .875rem; font-weight: 600; line-height: 1.2; }
-.time-direct-input {
+.date-time-picker-time label { display: grid; min-width: 0; gap: .4375rem; color: var(--muted); font-size: .875rem; font-weight: 600; }
+.date-time-picker-time select {
   width: 100%;
   min-width: 0;
   height: 48px;
@@ -439,13 +446,10 @@ button, a, input, select { min-height: var(--touch); }
   color: var(--foreground);
   font-size: 1.125rem;
   font-weight: 600;
-  line-height: 48px;
   text-align: center;
 }
-.time-direct-input:focus-visible,
+.date-time-picker-time select:focus-visible,
 .time-period-control button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.time-direct-input[aria-invalid="true"] { border-color: #b91c1c; }
-.time-direct-error { color: #b91c1c; font-size: .75rem; line-height: 1.2; }
 .time-period-control > div { position: relative; display: grid; grid-template-columns: 1fr 1fr; height: 48px; overflow: hidden; padding: .2rem; border-radius: .7rem; background: var(--surface-subtle); }
 .time-period-indicator { position: absolute; inset: .2rem auto .2rem .2rem; width: calc(50% - .2rem); border-radius: .55rem; background: var(--primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--primary) 35%, transparent); transition: transform 180ms ease; }
 .time-period-control[data-period="PM"] .time-period-indicator { transform: translateX(100%); }
@@ -454,7 +458,8 @@ button, a, input, select { min-height: var(--touch); }
 .date-time-picker-done { width: 100%; min-height: 48px; margin-top: .75rem; border-radius: .5rem; background: var(--primary); color: white; font-weight: 700; }
 @media (max-width: 599px) {
   .date-time-picker-time { gap: .375rem; }
-  .time-direct-input,
+  .date-time-picker-control > button,
+  .date-time-picker-time select,
   .time-period-control > div { height: 52px; font-size: 1.1875rem; line-height: 52px; }
 }
 .fc {
@@ -476,7 +481,7 @@ button, a, input, select { min-height: var(--touch); }
   box-shadow: inset 5px 0 var(--category-color);
   color: var(--foreground) !important;
 }
-.fc .fc-list-event[data-appointment-id] .fc-list-event-dot { border-color: var(--category-color) !important; }
+.fc .fc-list-event[data-appointment-id] .fc-list-event-graphic { display: none; }
 .fc .fc-event-main,
 .fc .fc-event-main-frame,
 .fc .fc-daygrid-event-harness,
@@ -598,7 +603,6 @@ button, a, input, select { min-height: var(--touch); }
   .pouragenda-calendar .fc .fc-list-table { width: 100%; table-layout: fixed; }
   .pouragenda-calendar .fc .fc-list-event td { padding-block: .625rem; }
   .pouragenda-calendar .fc .fc-list-event-time { width: 7.25rem; white-space: nowrap; }
-  .pouragenda-calendar .fc .fc-list-event-graphic { width: 1.75rem; padding-inline: .375rem; }
   .pouragenda-calendar .fc .fc-list-event-title { min-width: 0; overflow: hidden; }
   .pouragenda-calendar .fc .fc-list-event-title a {
     display: block;

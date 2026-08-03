@@ -75,6 +75,9 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
 
     await page.getByRole("button", { name: "Agenda", exact: true }).click();
     await expect(page.locator(".fc-list")).toBeVisible();
+    expect(await page.locator(".fc-list-event-graphic").count()).toBeGreaterThan(0);
+    await expect(page.locator(".fc-list-event-graphic").first()).toBeHidden();
+    await expect(page.locator(".fc-list-event").first()).toHaveCSS("box-shadow", /rgb/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
     if (viewport.width < 1280) {

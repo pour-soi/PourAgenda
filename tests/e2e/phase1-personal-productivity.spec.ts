@@ -125,16 +125,28 @@ test.describe("Phase 1 personal productivity foundation", () => {
     await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
     const editor = page.getByRole("dialog", { name: "Create appointment" });
     await expect(editor.getByLabel("Title")).toHaveValue("Dentist");
-    await expect(editor.getByLabel("Start")).toHaveValue("07/30/2026 2:00 PM");
-    await expect(editor.getByLabel("End")).toHaveValue("07/30/2026 3:00 PM");
+    await expect(editor.getByRole("button", { name: "Choose start date" })).toContainText("07/30/2026");
+    await expect(editor.getByRole("button", { name: "Choose start time" })).toContainText("2:00 PM");
+    await expect(editor.getByRole("button", { name: "Choose end date" })).toContainText("07/30/2026");
+    await expect(editor.getByRole("button", { name: "Choose end time" })).toContainText("3:00 PM");
     await expect(editor).toContainText("Review before saving");
     await editor.getByRole("button", { name: "Close" }).click();
 
     await quickAdd.fill("Coffee Saturday");
     await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
     await expect(editor.getByLabel("Title")).toHaveValue("Coffee");
-    await expect(editor.getByLabel("Start")).toHaveValue(/^08\/01\/2026 /);
+    await expect(editor.getByRole("button", { name: "Choose start date" })).toContainText("08/01/2026");
     await expect(editor).toContainText("Date recognized. Choose a time before saving.");
+    await editor.getByRole("button", { name: "Close" }).click();
+
+    await quickAdd.fill("255 Howth Street client 8/15 4pm");
+    await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
+    await expect(editor.getByLabel("Title")).toHaveValue("client");
+    await expect(editor.getByLabel("Location")).toHaveValue("255 Howth Street");
+    await expect(editor.getByRole("button", { name: "Choose start date" })).toContainText("08/15/2026");
+    await expect(editor.getByRole("button", { name: "Choose start time" })).toContainText("4:00 PM");
+    await expect(editor.getByRole("button", { name: "Choose end date" })).toContainText("08/15/2026");
+    await expect(editor.getByRole("button", { name: "Choose end time" })).toContainText("5:00 PM");
   });
 
   test("global search ranks authorized fields and supports keyboard open, navigation, close, and focus return", async ({ page }) => {
