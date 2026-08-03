@@ -84,3 +84,18 @@ test("changing time selections away and back preserves the stored local timestam
   await picker.getByRole("button", { name: "Done" }).click();
   await expect(compatibilityValue).toHaveValue(original);
 });
+
+test("switching display formats preserves the same appointment timestamp", async ({ page }) => {
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  const editor12 = await openEditor(page, "12h");
+  const timestamp12 = await editor12.locator(".date-time-picker").first().getAttribute("data-date-time-value");
+  await expect(editor12.getByRole("button", { name: "Choose start time" })).toContainText("PM");
+
+  const editor24 = await openEditor(page, "24h");
+  const timestamp24 = await editor24.locator(".date-time-picker").first().getAttribute("data-date-time-value");
+  await expect(editor24.getByRole("button", { name: "Choose start time" })).not.toContainText(/AM|PM/);
+  expect(timestamp24).toBe(timestamp12);
+
+  const editor12Again = await openEditor(page, "12h");
+  expect(await editor12Again.locator(".date-time-picker").first().getAttribute("data-date-time-value")).toBe(timestamp24);
+});

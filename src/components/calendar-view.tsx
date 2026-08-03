@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { DayExperience } from "@/components/day-experience";
 import { localInputToUtc, toLocalInput } from "@/lib/appointments";
 import { dayKind, zonedDateKey } from "@/lib/personal-productivity";
-import type { TimeFormat } from "@/lib/date-format";
+import { fullCalendarTimeDisplayOptions, type TimeFormat } from "@/lib/date-format";
 
 declare global {
   interface Window {
@@ -220,6 +220,7 @@ export default function CalendarView({
     start: toLocalInput(event.start, timezone),
     end: toLocalInput(event.end, timezone),
   });
+  const calendarTimeDisplay = fullCalendarTimeDisplayOptions(timeFormat);
 
   useEffect(() => {
     const request = pendingScroll.current;
@@ -277,8 +278,8 @@ export default function CalendarView({
           initialView={initialView}
           locale="en-US"
           firstDay={0}
-          eventTimeFormat={{ hour: timeFormat === "24h" ? "2-digit" : "numeric", minute: "2-digit", hour12: timeFormat === "12h" }}
-          slotLabelFormat={{ hour: timeFormat === "24h" ? "2-digit" : "numeric", minute: "2-digit", hour12: timeFormat === "12h" }}
+          eventTimeFormat={calendarTimeDisplay}
+          slotLabelFormat={calendarTimeDisplay}
           views={{
             [MOBILE_WEEK_VIEW]: {
               type: "timeGrid",

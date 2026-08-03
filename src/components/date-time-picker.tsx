@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
-import type { TimeFormat } from "@/lib/date-format";
+import { formatWallTime, type TimeFormat } from "@/lib/date-format";
 export type { TimeFormat } from "@/lib/date-format";
 
 export const ENGLISH_MONTHS = [
@@ -42,10 +42,7 @@ export function formatEnglishDate(value: string): string {
 export function formatEnglishTime(value: string, timeFormat: TimeFormat): string {
   const match = /T(\d{2}):(\d{2})/.exec(value);
   if (!match) return "";
-  const hour = Number(match[1]);
-  const minute = match[2];
-  if (timeFormat === "24h") return `${twoDigits(hour)}:${minute}`;
-  return `${hour % 12 || 12}:${minute} ${hour < 12 ? "AM" : "PM"}`;
+  return formatWallTime(`${match[1]}:${match[2]}`, timeFormat);
 }
 
 export function formatEnglishDateTime(value: string, dateOnly: boolean, timeFormat: TimeFormat): string {
@@ -135,7 +132,7 @@ export function EnglishDateTimePicker({
   };
 
   return (
-    <div ref={root} className="date-time-picker">
+    <div ref={root} className="date-time-picker" data-date-time-value={value}>
       <input className="sr-only" tabIndex={-1} readOnly aria-label={ariaLabel} value={formatEnglishDateTime(value, dateOnly, timeFormat)} />
       <div className="date-time-picker-controls" data-date-only={dateOnly || undefined}>
         <div className="date-time-picker-control">

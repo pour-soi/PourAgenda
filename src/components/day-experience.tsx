@@ -9,7 +9,7 @@ import {
   selectedDateHeading,
   type ProductivityEvent,
 } from "@/lib/personal-productivity";
-import { formatTime, type TimeFormat } from "@/lib/date-format";
+import { formatTime, formatWallTime, type TimeFormat } from "@/lib/date-format";
 
 function eventTime(event: ProductivityEvent, timezone: string, timeFormat: TimeFormat) {
   if (event.allDay) return "All day";
@@ -102,7 +102,7 @@ export function DayExperience({
           <section className="day-insight day-free-time" aria-labelledby="free-time-heading">
             <h3 id="free-time-heading">Free time</h3>
             <p>{freeTime}</p>
-            <span>{timeFormat === "12h" ? "7:00 AM–10:00 PM" : "07:00–22:00"} · gaps under 15m omitted</span>
+            <span>{formatWallTime("07:00", timeFormat)}–{formatWallTime("22:00", timeFormat)} · gaps under 15m omitted</span>
           </section>
         )}
       </div>

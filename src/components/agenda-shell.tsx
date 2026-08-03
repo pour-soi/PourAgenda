@@ -10,7 +10,7 @@ import { AppointmentListPanel } from "@/components/appointment-list-panel";
 import { GlobalEventSearch } from "@/components/global-event-search";
 import { QuickAdd } from "@/components/quick-add";
 import { EnglishDateTimePicker, type TimeFormat } from "@/components/date-time-picker";
-import { formatDate, formatDateTime, formatTime, resolveTimeFormat, type TimeFormatPreference } from "@/lib/date-format";
+import { detectSystemHourCycle, formatDate, formatDateTime, formatTime, resolveTimeFormat, type TimeFormatPreference } from "@/lib/date-format";
 import { allDayCalendarRange, allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStartToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
 import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
@@ -30,8 +30,7 @@ declare global {
 }
 type Category = { id: string; name: string; color: string; hidden: boolean };
 const subscribeToSystemTimeFormat = () => () => undefined;
-const getSystemUses12Hour = () => new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12 !== false;
-const getServerUses12Hour = () => true;
+const getServerHourCycle = () => "h12" as const;
 const contrastingText = (color: string) => {
   const [r, g, b] = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16));
   return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#17211d" : "#ffffff";
@@ -59,8 +58,8 @@ const blankDraft = (categoryId: string, timezone: string, reminders: number[], d
 export function AgendaShell({ email, userId, timezone, timeFormatPreference, defaultDuration, defaultReminders, categories }: {
   email: string; userId: string; timezone: string; timeFormatPreference: TimeFormatPreference | string; defaultDuration: number; defaultReminders: number[]; categories: Category[];
 }) {
-  const systemUses12Hour = useSyncExternalStore(subscribeToSystemTimeFormat, getSystemUses12Hour, getServerUses12Hour);
-  const timeFormat: TimeFormat = resolveTimeFormat(timeFormatPreference, systemUses12Hour);
+  const systemHourCycle = useSyncExternalStore(subscribeToSystemTimeFormat, detectSystemHourCycle, getServerHourCycle);
+  const timeFormat: TimeFormat = resolveTimeFormat(timeFormatPreference, systemHourCycle);
   const defaultDurationMinutes = validDuration(defaultDuration);
   const supabase = useMemo(() => createClient(), []);
   const [appointments, setAppointments] = useState<AppointmentOccurrence[]>([]);
