@@ -64,6 +64,33 @@ export function recurrencePreview(appointment: Appointment, count = 3): Appointm
   return expandAppointments([appointment], new Date(start.getTime() - 1).toISOString(), end.toISOString()).slice(0, count);
 }
 
+export type RecurrencePreviewState = "normal" | "skipped" | "edited" | "moved";
+export type RecurrencePreviewItem = {
+  occurrence: AppointmentOccurrence;
+  originalStartsAt: string;
+  state: RecurrencePreviewState;
+  exception: Appointment | null;
+};
+
+export function recurrencePreviewWithExceptions(
+  appointment: Appointment,
+  exceptions: Appointment[],
+  count = 5,
+): RecurrencePreviewItem[] {
+  return recurrencePreview(appointment, count).map((generated) => {
+    const exception = exceptions.find((item) => item.series_id === appointment.id
+      && item.original_occurrence_start
+      && isoKey(item.original_occurrence_start) === isoKey(generated.original_occurrence_start!)) ?? null;
+    if (!exception) return { occurrence: generated, originalStartsAt: generated.starts_at, state: "normal", exception };
+    const occurrence = { ...exception, occurrence_id: generated.occurrence_id,
+      series_parent_id: appointment.id, is_generated_occurrence: false } as AppointmentOccurrence;
+    const state = exception.status === "cancelled"
+      ? "skipped"
+      : isoKey(exception.starts_at) === isoKey(generated.starts_at) ? "edited" : "moved";
+    return { occurrence, originalStartsAt: generated.starts_at, state, exception };
+  });
+}
+
 export function expandAppointments(
   rows: Appointment[],
   rangeStart: string,

@@ -17,20 +17,21 @@ async function createSeries(
   start.setHours(10, 0, 0, 0);
   const end = new Date(start.getTime() + 3600_000);
   await dialog.getByLabel("Title").fill(title);
-  await fillDateTimePicker(dialog.getByLabel("Start"), localInput(start.toISOString()));
+  await fillDateTimePicker(dialog.getByRole("textbox", { name: "Start", exact: true }), localInput(start.toISOString()));
   await fillDateTimePicker(dialog.getByRole("textbox", { name: "End", exact: true }), localInput(end.toISOString()));
   await dialog.getByLabel("Repeat pattern").selectOption(pattern);
-  if (pattern === "weekly-n") await dialog.getByLabel("Repeat every weeks").fill("2");
+  if (pattern === "weekly-n") await dialog.getByLabel("Repeat every weeks").selectOption("2");
   await dialog.getByLabel("Repeat ending").selectOption(ending);
   if (ending === "date") {
     const until = new Date(start);
     until.setDate(until.getDate() + (pattern === "monthly" ? 70 : 28));
-    await fillDateTimePicker(dialog.getByLabel("Repeat end date"), until.toISOString().slice(0, 10));
+    await fillDateTimePicker(dialog.getByRole("textbox", { name: "Repeat end date", exact: true }), until.toISOString().slice(0, 10));
   }
-  const expected = pattern === "monthly" ? "Repeats every month" : pattern === "weekly-n" ? "Repeats every 2 weeks" : "Repeats every";
-  await expect(dialog.getByText(new RegExp(`${expected}.*${ending === "never" ? "never ends" : "until"}`))).toBeVisible();
+  const expected = pattern === "monthly" ? "every month" : pattern === "weekly-n" ? "every 2 weeks" : "every";
+  await expect(dialog.getByText(new RegExp(`^${expected}`))).toBeVisible();
+  await expect(dialog.getByText(ending === "never" ? "No end date" : /^Until /)).toBeVisible();
   await expect(dialog.getByText("Summary", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Next occurrences", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Upcoming", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Save appointment" }).click();
   await expect(dialog).toBeHidden();
 }

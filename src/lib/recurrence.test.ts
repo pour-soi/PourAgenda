@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrenceSummary } from "./recurrence";
+import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrencePreviewWithExceptions, recurrenceSummary } from "./recurrence";
 import type { Appointment } from "@/types/domain";
 
 const series = (overrides: Partial<Appointment> = {}): Appointment => ({
@@ -7,7 +7,7 @@ const series = (overrides: Partial<Appointment> = {}): Appointment => ({
   starts_at: "2026-03-06T17:00:00.000Z", ends_at: "2026-03-06T18:00:00.000Z",
   intended_local_start: "2026-03-06 09:00:00", intended_local_end: "2026-03-06 10:00:00",
   timezone: "America/Los_Angeles", all_day: false, location: null, phone: null, email: null,
-  public_notes: null, private_notes: null, status: "confirmed", archived: false,
+  public_notes: null, private_notes: null, status: "confirmed",
   recurrence_frequency: "daily", recurrence_interval: 1, recurrence_until: null, recurrence_count: null,
   series_id: null, original_occurrence_start: null, completed_at: null, cancelled_at: null,
   created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", ...overrides,
@@ -36,6 +36,18 @@ describe("bounded recurrence expansion", () => {
     expect(rows.map((x) => x.title).filter((x) => x === "Moved")).toHaveLength(1);
     expect(rows).toHaveLength(3);
     expect(new Set(rows.map((x) => x.occurrence_id)).size).toBe(3);
+  });
+  it("classifies skipped, edited, and moved occurrence previews without duplicates", () => {
+    const generated = recurrencePreview(series({ recurrence_count: 4 }), 4);
+    const skipped = series({ id: "skip", recurrence_frequency: null, recurrence_interval: null, series_id: "series",
+      original_occurrence_start: generated[1].original_occurrence_start, status: "cancelled" });
+    const edited = series({ id: "edit", recurrence_frequency: null, recurrence_interval: null, series_id: "series",
+      original_occurrence_start: generated[2].original_occurrence_start, starts_at: generated[2].starts_at, ends_at: generated[2].ends_at, title: "Edited" });
+    const moved = series({ id: "move", recurrence_frequency: null, recurrence_interval: null, series_id: "series",
+      original_occurrence_start: generated[3].original_occurrence_start, starts_at: "2026-03-12T20:00:00.000Z", ends_at: "2026-03-12T21:00:00.000Z" });
+    const preview = recurrencePreviewWithExceptions(series({ recurrence_count: 4 }), [skipped, edited, moved], 4);
+    expect(preview.map((item) => item.state)).toEqual(["normal", "skipped", "edited", "moved"]);
+    expect(new Set(preview.map((item) => item.occurrence.occurrence_id)).size).toBe(4);
   });
   it("handles boundary and empty ranges", () => {
     expect(expand([series({ recurrence_count: 1 })], "2026-03-06T18:00:00Z", "2026-03-07T00:00:00Z")).toHaveLength(0);

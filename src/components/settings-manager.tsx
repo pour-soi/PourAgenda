@@ -102,7 +102,8 @@ export function SettingsManager({
         if ((result.data?.length ?? 0) < 500) break;
       }
       setPending(false);
-      const safe = collected.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "user_id")));
+      const safe = collected.map((row) => Object.fromEntries(Object.entries(row)
+        .filter(([key]) => key !== "user_id" && key !== "archived")));
       downloadText(`pouragenda-${kind}.csv`, csv(safe), "text/csv;charset=utf-8");
     }
     await supabase.from("appointment_activity").insert({ user_id: userId, appointment_id: null, action: "export_requested" });

@@ -217,8 +217,7 @@ test("live exports download owner data with safe CSV, JSON, and ICS", async ({ p
     const completed = await createLiveAppointment(a, `${marker} completed`, {
       status: "completed", completed_at: new Date().toISOString(),
     });
-    const archived = await createLiveAppointment(a, `${marker} archived`, { archived: true });
-    ownedAppointmentIds.push(completed.id, archived.id);
+    ownedAppointmentIds.push(completed.id);
     await createLiveAppointment(b, foreign);
     await a.from("contacts").insert({ user_id: aId, name: `=SUM(1), ${marker}`, notes: "line1\nline2" });
     await b.from("contacts").insert({ user_id: bId, name: foreign });
@@ -230,7 +229,7 @@ test("live exports download owner data with safe CSV, JSON, and ICS", async ({ p
     const appointmentText = await fs.readFile((await appointment.path())!, "utf8");
     expect(appointmentText).toContain(marker); expect(appointmentText).not.toContain(foreign);
     expect(appointmentText).toContain("\"'=PRIVATE"); expect(appointmentText).toContain("\"\"line\"\"");
-    for (const suffix of ["recurring", "modified", "cancelled occurrence", "completed", "archived"]) {
+    for (const suffix of ["recurring", "modified", "cancelled occurrence", "completed"]) {
       expect(appointmentText).toContain(`${marker} ${suffix}`);
     }
     expect(appointmentText).toContain("UTC");
@@ -283,7 +282,7 @@ test("large appointment export uses bounded server pages", async ({ page }, test
       starts_at: begins.toISOString(), ends_at: ends.toISOString(),
       intended_local_start: begins.toISOString().slice(0, 19).replace("T", " "),
       intended_local_end: ends.toISOString().slice(0, 19).replace("T", " "),
-      timezone: "UTC", all_day: false, status: "pending", archived: false,
+      timezone: "UTC", all_day: false, status: "pending",
     };
   });
   try {

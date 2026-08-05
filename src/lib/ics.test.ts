@@ -7,7 +7,7 @@ it("exports a UTC calendar event without private notes", () => {
     id: "event-1", user_id: "u", category_id: "c", title: "Care, review", kind: "personal",
     starts_at: "2026-11-01T16:00:00.000Z", ends_at: "2026-11-01T17:00:00.000Z",
     timezone: "America/Los_Angeles", all_day: false, location: "Clinic", public_notes: "Bring forms",
-    private_notes: "Never export", status: "confirmed", archived: false, updated_at: "2026-10-01T00:00:00.000Z",
+    private_notes: "Never export", status: "confirmed", updated_at: "2026-10-01T00:00:00.000Z",
   } as Appointment);
   expect(event).toContain("SUMMARY:Care\\, review");
   expect(event).toContain("DTSTART:20261101T160000Z");
@@ -19,7 +19,7 @@ it("exports a recurring series with cancelled and modified exceptions", () => {
     id: "series-1", user_id: "u", category_id: "c", title: "Weekly review", kind: "work",
     starts_at: "2026-03-06T17:00:00Z", ends_at: "2026-03-06T18:00:00Z", timezone: "America/Los_Angeles",
     all_day: false, location: null, public_notes: null, private_notes: "private", status: "confirmed",
-    archived: false, recurrence_frequency: "weekly", recurrence_interval: 2, recurrence_until: "2026-06-01",
+    recurrence_frequency: "weekly", recurrence_interval: 2, recurrence_until: "2026-06-01",
     updated_at: "2026-03-01T00:00:00Z",
   } as Appointment;
   const cancelled = { ...parent, id: "cancelled", series_id: parent.id, recurrence_frequency: null,

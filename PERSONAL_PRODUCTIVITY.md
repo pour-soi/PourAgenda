@@ -5,7 +5,7 @@ Phase 1 keeps PourAgenda calendar-first. Month is the first view when no prior v
 ## Selected-day calculations
 
 - The active account timezone determines today, tomorrow, selected-day membership, headings, countdowns, and displayed times.
-- All visible occurrences on the selected date count as events. Cancelled, archived, or filtered-out records never reach these calculations.
+- All visible occurrences on the selected date count as events. Cancelled or filtered-out records never reach these calculations.
 - Timed intervals are clipped to the selected date, merged when they overlap, and summed once.
 - All-day events count as events but add no artificial 24-hour duration.
 - Invalid or reversed intervals are ignored for duration and free-time arithmetic.

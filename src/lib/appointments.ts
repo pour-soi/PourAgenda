@@ -132,8 +132,6 @@ export function appointmentError(error: { code?: string }): string {
   return "PourAgenda could not save that appointment. Check your connection and try again.";
 }
 
-export function undoAppointmentValues(action: "archive" | "cancel", appointment: Appointment) {
-  return action === "archive"
-    ? { archived: appointment.archived }
-    : { status: appointment.status, cancelled_at: appointment.cancelled_at };
+export function undoAppointmentValues(appointment: Appointment) {
+  return { status: appointment.status, cancelled_at: appointment.cancelled_at };
 }

@@ -6,7 +6,7 @@ const row = (id: string, starts_at: string): Appointment => ({
   id, starts_at, ends_at: starts_at, user_id: "u", category_id: "c", title: id,
   kind: "work", timezone: "UTC", all_day: false, location: null, phone: null,
   email: null, public_notes: null, private_notes: null, status: "pending",
-  archived: false, created_at: starts_at, updated_at: starts_at,
+  created_at: starts_at, updated_at: starts_at,
   completed_at: null, cancelled_at: null,
 });
 

@@ -13,9 +13,9 @@ Security-critical writes should use authenticated server actions or route handle
 
 The protected home route loads user settings and categories on the server. The browser appointment workspace queries only the FullCalendar visible range plus a seven-day buffer, with RLS as the ownership boundary. Create and edit validation is deterministic; writes include the authenticated user ID and category ownership is enforced by the composite foreign key.
 
-Edits, status changes, drag, resize, archive, restore, and permanent deletion compare the last `updated_at` value so a stale client cannot silently overwrite a newer row. Conflict checks query overlapping non-cancelled rows immediately before a time-changing write and require an explicit override. Cross-device changes appear after refresh; Realtime is intentionally not claimed or enabled.
+Edits, status changes, drag, resize, cancellation, and permanent deletion compare the last `updated_at` value so a stale client cannot silently overwrite a newer row. Conflict checks query overlapping non-cancelled rows immediately before a time-changing write and require an explicit override. Cross-device changes appear after refresh; Realtime is intentionally not claimed or enabled.
 
-Long lists are separate from calendar range queries. Upcoming, Today, This week, Completed, Cancelled, and Archived use bounded keyset pages with a stable timestamp-and-ID order. Filter changes reset the cursor. Archive and cancel provide a short Undo window; a failed Undo reloads current server state.
+Long lists are separate from calendar range queries. Upcoming, Today, This week, Completed, and Cancelled use bounded keyset pages with a stable timestamp-and-ID order. Filter changes reset the cursor. Cancellation provides a short Undo window; a failed Undo reloads current server state.
 
 ## Appointment date model
 

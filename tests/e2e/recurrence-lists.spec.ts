@@ -37,9 +37,8 @@ test("recurring sections, search, and pagination stay deterministic", async ({ p
       status: "cancelled", cancelled_at: new Date().toISOString(),
     });
     for (const { suffix, ...state } of [
-      { suffix: "completed", status: "completed", archived: false, completed_at: new Date().toISOString() },
-      { suffix: "cancelled", status: "cancelled", archived: false, cancelled_at: new Date().toISOString() },
-      { suffix: "archived", status: "pending", archived: true },
+      { suffix: "completed", status: "completed", completed_at: new Date().toISOString() },
+      { suffix: "cancelled", status: "cancelled", cancelled_at: new Date().toISOString() },
     ]) {
       const row = await createLiveAppointment(client, `${prefix} ${suffix}`, {
         starts_at: start.toISOString(), ends_at: end.toISOString(),
@@ -80,10 +79,6 @@ test("recurring sections, search, and pagination stay deterministic", async ({ p
 
     await expect(page.getByRole("tab", { name: "Completed" })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Cancelled" })).toHaveCount(0);
-    await search.fill(`${prefix} archived`);
-    await page.getByRole("tab", { name: "Archived" }).click();
-    await expect(page.getByRole("region", { name: "Archived appointments" })
-      .getByText(`${prefix} archived`, { exact: true }).first()).toBeVisible();
   } finally {
     for (const id of parents) await client.from("appointments").delete().eq("id", id);
     await client.auth.signOut();

@@ -13,7 +13,7 @@ const stableId = (item: Appointment) =>
   (item as Partial<AppointmentOccurrence>).occurrence_id ?? item.id;
 const labels: Record<AppointmentListSection, string> = {
   upcoming: "Upcoming", today: "Today", "this-week": "This week",
-  completed: "Completed", cancelled: "Cancelled", archived: "Archived",
+  completed: "Completed", cancelled: "Cancelled",
 };
 
 function dayBounds(timezone: string) {
@@ -77,12 +77,11 @@ export function AppointmentListPanel({
     let query = supabase.from("appointments").select("*").is("series_id", null).is("recurrence_frequency", null)
       .order(sortField, { ascending, nullsFirst: false }).order("id", { ascending: true }).limit(PAGE_SIZE + 1);
 
-    if (section === "upcoming") query = query.eq("archived", false).in("status", ["pending", "confirmed"]).gte("starts_at", now.toISOString());
-    if (section === "today") query = query.eq("archived", false).neq("status", "cancelled").lt("starts_at", today.end).gt("ends_at", today.start);
-    if (section === "this-week") query = query.eq("archived", false).neq("status", "cancelled").lt("starts_at", weekEnd.toISOString()).gt("ends_at", today.start);
-    if (section === "completed") query = query.eq("archived", false).eq("status", "completed").not("completed_at", "is", null);
-    if (section === "cancelled") query = query.eq("archived", false).eq("status", "cancelled").not("cancelled_at", "is", null);
-    if (section === "archived") query = query.eq("archived", true);
+    if (section === "upcoming") query = query.in("status", ["pending", "confirmed"]).gte("starts_at", now.toISOString());
+    if (section === "today") query = query.neq("status", "cancelled").lt("starts_at", today.end).gt("ends_at", today.start);
+    if (section === "this-week") query = query.neq("status", "cancelled").lt("starts_at", weekEnd.toISOString()).gt("ends_at", today.start);
+    if (section === "completed") query = query.eq("status", "completed").not("completed_at", "is", null);
+    if (section === "cancelled") query = query.eq("status", "cancelled").not("cancelled_at", "is", null);
     if (kind !== "all") query = query.eq("kind", kind);
     if (category !== "all") query = query.eq("category_id", category);
     const term = search.trim().replace(/[,%()]/g, " ");
@@ -121,12 +120,11 @@ export function AppointmentListPanel({
         [...(seriesResult.data ?? []), ...(exceptionsResult.data ?? [])] as Appointment[],
         horizonStart, horizonEnd, 500, section === "cancelled",
       ).filter((item) => {
-        if (section === "upcoming" && (item.archived || !["pending", "confirmed"].includes(item.status) || item.starts_at < now.toISOString())) return false;
-        if (section === "today" && (item.archived || item.status === "cancelled")) return false;
-        if (section === "this-week" && (item.archived || item.status === "cancelled")) return false;
-        if (section === "completed" && (item.archived || item.status !== "completed")) return false;
-        if (section === "cancelled" && (item.archived || item.status !== "cancelled")) return false;
-        if (section === "archived" && !item.archived) return false;
+        if (section === "upcoming" && (!["pending", "confirmed"].includes(item.status) || item.starts_at < now.toISOString())) return false;
+        if (section === "today" && item.status === "cancelled") return false;
+        if (section === "this-week" && item.status === "cancelled") return false;
+        if (section === "completed" && item.status !== "completed") return false;
+        if (section === "cancelled" && item.status !== "cancelled") return false;
         if (kind !== "all" && item.kind !== kind) return false;
         if (category !== "all" && item.category_id !== category) return false;
         if (term && ![item.title,item.location,item.public_notes,item.private_notes,item.phone,item.email].some((value) => value?.toLowerCase().includes(term.toLowerCase()))) return false;

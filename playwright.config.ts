@@ -15,7 +15,10 @@ export default defineConfig({
     : {
         command: "node node_modules/next/dist/bin/next dev --webpack",
         url: "http://localhost:3000",
-        reuseExistingServer: true,
+        // A reused Windows Next.js child can retain the invoking process's
+        // output handles after its original Playwright parent exits. Own the
+        // local server so teardown always terminates the complete process tree.
+        reuseExistingServer: false,
         env: {
           POURAGENDA_LAYOUT_PREVIEW: "1",
           NEXT_FONT_GOOGLE_MOCKED_RESPONSES: path.resolve(

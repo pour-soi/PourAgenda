@@ -7,7 +7,7 @@ const appointment: Appointment = {
   title: "Consultation", kind: "work", starts_at: "2026-03-08T17:00:00.000Z",
   ends_at: "2026-03-08T18:00:00.000Z", timezone: "America/Los_Angeles",
   all_day: false, location: null, public_notes: null, private_notes: null,
-  phone: null, email: null, status: "confirmed", archived: false,
+  phone: null, email: null, status: "confirmed",
   created_at: "2026-01-01T00:00:00.000Z", completed_at: null, cancelled_at: null,
   updated_at: "2026-01-01T00:00:00.000Z",
 };
@@ -85,9 +85,8 @@ describe("appointment guarantees", () => {
       starts_at: "2026-08-02T00:00:00.000Z", ends_at: "2026-08-03T00:00:00.000Z",
     })).toThrow("intended_local_start");
   });
-  it("restores the exact pre-action archive and cancellation state", () => {
-    expect(undoAppointmentValues("archive", appointment)).toEqual({ archived: false });
-    expect(undoAppointmentValues("cancel", appointment)).toEqual({ status: "confirmed", cancelled_at: null });
+  it("restores the exact pre-cancellation state", () => {
+    expect(undoAppointmentValues(appointment)).toEqual({ status: "confirmed", cancelled_at: null });
   });
   it("gives an expired session an explicit recovery instruction", () => {
     expect(appointmentError({ code: "PGRST301" })).toContain("Sign in again");

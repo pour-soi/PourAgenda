@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Archive, CalendarDays, Filter, List, Plus, RotateCcw, Search, Settings, Trash2, X } from "lucide-react";
+import { CalendarDays, Filter, List, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { AppointmentListPanel } from "@/components/appointment-list-panel";
 import { GlobalEventSearch } from "@/components/global-event-search";
@@ -14,7 +14,8 @@ import { detectSystemHourCycle, formatDate, formatDateTime, formatTime, resolveT
 import { allDayCalendarRange, allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStartToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
 import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
-import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrenceSummary } from "@/lib/recurrence";
+import { expandAppointments, findRecurringConflicts, type RecurrencePreviewItem } from "@/lib/recurrence";
+import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { REMINDER_OPTIONS, normalizeReminderMinutes, reminderTimes } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
 import type { Appointment, AppointmentOccurrence, RecurrenceFrequency } from "@/types/domain";
@@ -63,6 +64,7 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
   const defaultDurationMinutes = validDuration(defaultDuration);
   const supabase = useMemo(() => createClient(), []);
   const [appointments, setAppointments] = useState<AppointmentOccurrence[]>([]);
+  const [recurrenceRows, setRecurrenceRows] = useState<Appointment[]>([]);
   const [range, setRange] = useState({ start: new Date(0), end: new Date(864e5) });
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -136,14 +138,16 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     else {
       setCalendarLoadError("");
       setAppointmentsLoadedAt(Date.now());
+      const sourceRows = [...(singleResult.data ?? []), ...(seriesResult.data ?? []), ...(exceptionResult.data ?? [])] as Appointment[];
+      setRecurrenceRows(sourceRows);
       const expanded = expandAppointments(
-        [...(singleResult.data ?? []), ...(seriesResult.data ?? []), ...(exceptionResult.data ?? [])] as Appointment[],
+        sourceRows,
         start, end,
       );
       const term = search.trim().toLowerCase();
       setAppointments(expanded.filter((item) => {
         if (category !== "all" && item.category_id !== category) return false;
-        if (item.archived || item.status === "cancelled") return false;
+        if (item.status === "cancelled") return false;
         if (term && ![item.title, item.location, item.public_notes, item.private_notes]
           .some((value) => value?.toLowerCase().includes(term))) return false;
         return true;
@@ -205,7 +209,7 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     setSearchCatalogLoading(true);
     setSearchCatalogError("");
     const result = await supabase.from("appointments").select("*")
-      .eq("archived", false).neq("status", "cancelled")
+      .neq("status", "cancelled")
       .order("starts_at", { ascending: false }).limit(1000);
     if (result.error) setSearchCatalogError("Search could not load all authorized events. Try again.");
     else {
@@ -536,7 +540,28 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
     }
     if (editScope === "series"
       && !window.confirm(`Cancel the entire recurring series “${item.title}”?`)) return;
-    await undoablePatch(item, { status: "cancelled", cancelled_at: now }, undoAppointmentValues("cancel", item), editScope === "series" ? "Recurring series cancelled." : "Appointment cancelled.");
+    await undoablePatch(item, { status: "cancelled", cancelled_at: now }, undoAppointmentValues(item), editScope === "series" ? "Recurring series cancelled." : "Appointment cancelled.");
+  }
+  async function skipPreviewOccurrence(item: RecurrencePreviewItem) {
+    const occurrence = item.occurrence;
+    const { occurrence_id: _id, series_parent_id, is_generated_occurrence: _generated, ...row } = occurrence;
+    void _id; void _generated;
+    const { error } = await supabase.from("appointments").insert({ ...row, id: undefined,
+      status: "cancelled", cancelled_at: new Date().toISOString(), recurrence_frequency: null,
+      recurrence_interval: null, recurrence_until: null, recurrence_count: null,
+      series_id: series_parent_id, original_occurrence_start: occurrence.original_occurrence_start });
+    if (error) setMessage(appointmentError(error)); else { setMessage("Occurrence skipped."); void load(); }
+  }
+  async function restorePreviewOccurrence(item: RecurrencePreviewItem) {
+    if (!item.exception) return;
+    const { data, error } = await supabase.from("appointments").delete().eq("id", item.exception.id)
+      .eq("updated_at", item.exception.updated_at).select("id");
+    if (error) setMessage(appointmentError(error)); else if (!data?.length) setMessage("This occurrence changed on another device. Refresh and try again.");
+    else { setMessage("Occurrence restored."); void load(); }
+  }
+  function editPreviewOccurrence(item: RecurrencePreviewItem) {
+    setOpen(false);
+    void openAppointmentEditor(item.occurrence, true);
   }
   async function remove(item: Appointment) {
     if (editScope === "occurrence" && "is_generated_occurrence" in item && item.is_generated_occurrence) {
@@ -685,17 +710,7 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
         <div><span className="font-medium">Start</span><EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,duration > 0 ? duration : defaultDurationMinutes * 60_000); setDraft({...draft,starts_at:start,ends_at:end}); }}/></div>
         <div><span className="font-medium">End</span><EnglishDateTimePicker ariaLabel="End" value={draft.ends_at} dateOnly={draft.all_day} timeFormat={timeFormat} min={draft.starts_at} describedBy="event-range-error" onChange={(ends_at) => { endOverridden.current=true; setDraft({...draft,ends_at}); }}/>{draft.ends_at < draft.starts_at && <span id="event-range-error" role="alert" className="mt-1 block text-sm text-red-700">End must not be earlier than Start.</span>}</div>
         <label>Location<input value={draft.location} onChange={(e) => setDraft({...draft,location:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
-        {editScope !== "occurrence" && <fieldset className="grid gap-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Repeat</legend>
-          <label>Repeats<select aria-label="Repeat pattern" value={draft.recurrence_frequency === "weekly" && draft.recurrence_interval > 1 ? "weekly-n" : draft.recurrence_frequency} onChange={(e) => {
-            const value = e.target.value;
-            setDraft({...draft, recurrence_frequency: value === "weekly-n" ? "weekly" : value as RecurrenceFrequency | "", recurrence_interval: value === "weekly-n" ? 2 : 1});
-          }} className="mt-1 w-full rounded-lg border border-border bg-background px-3"><option value="">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="weekly-n">Every N weeks</option></select></label>
-          {draft.recurrence_frequency === "weekly" && <div className="sm:col-span-2"><span className="text-sm font-medium">Repeat on</span><div className="mt-2 grid grid-cols-7 gap-1" role="group" aria-label="Repeat on weekday">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day,index) => { const selected=index===new Date(`${draft.starts_at.slice(0,10)}T12:00:00Z`).getUTCDay(); return <button key={day} type="button" disabled={!selected} aria-pressed={selected} className="min-h-11 rounded-md border border-border disabled:opacity-45 aria-pressed:bg-primary aria-pressed:text-white">{day}</button>; })}</div><p className="mt-1 text-xs text-muted">This recurrence model repeats on the Start date weekday.</p></div>}
-          {draft.recurrence_frequency === "weekly" && draft.recurrence_interval > 1 && <label className="flex items-center gap-2">Every<input aria-label="Repeat every weeks" inputMode="numeric" pattern="[0-9]*" value={draft.recurrence_interval} onChange={(e) => setDraft({...draft,recurrence_interval:Number(e.target.value)})} className="w-20 rounded-lg border border-border bg-background px-3"/> weeks</label>}
-          {draft.recurrence_frequency && <><label>Ends<select aria-label="Repeat ending" value={draft.recurrence_until ? "date" : "never"} onChange={(e) => setDraft({...draft,recurrence_until:e.target.value === "date" ? draft.starts_at.slice(0,10) : ""})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"><option value="never">Never ends</option><option value="date">Ends on date</option></select></label>
-          {draft.recurrence_until && <div><span className="font-medium">End date</span><EnglishDateTimePicker ariaLabel="Repeat end date" value={draft.recurrence_until} dateOnly min={draft.starts_at} onChange={(recurrence_until) => setDraft({...draft,recurrence_until:recurrence_until.slice(0,10)})}/></div>}
-          <div className="sm:col-span-2" aria-live="polite"><strong className="text-sm">Summary</strong><p className="text-sm text-muted">{recurrenceSummary({...editing, starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null,recurrence_interval:draft.recurrence_interval,recurrence_until:draft.recurrence_until || null} as Appointment)}</p><strong className="mt-3 block text-sm">Next occurrences</strong><ul className="mt-1 text-sm text-muted">{recurrencePreview({...editing, starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null,recurrence_interval:draft.recurrence_interval,recurrence_until:draft.recurrence_until || null} as Appointment).map((item) => <li key={item.occurrence_id}>{new Intl.DateTimeFormat("en-US",{weekday:"short",month:"short",day:"numeric",timeZone:draft.all_day?"UTC":timezone}).format(new Date(item.starts_at))}</li>)}</ul></div></>}
-        </fieldset>}
+        {editScope !== "occurrence" && <RecurrenceEditor appointment={{...editing, id: editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===editing.id) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean(editing?.id && editScope === "series")} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={(item)=>void skipPreviewOccurrence(item)} onRestore={(item)=>void restorePreviewOccurrence(item)} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
         <fieldset className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Reminders</legend><div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option)=><label key={option.value} className="flex items-center gap-2"><input aria-label={option.value === 0 ? "Reminder when event begins" : `Reminder ${option.label.toLowerCase()}`} type="checkbox" checked={draft.reminder_minutes.includes(option.value)} onChange={(e)=>setDraft({...draft,reminder_minutes:normalizeReminderMinutes(e.target.checked?[...draft.reminder_minutes,option.value]:draft.reminder_minutes.filter((value)=>value!==option.value))})}/><span aria-hidden="true">{option.label}</span></label>)}</div><p className="mt-2 text-sm text-muted">Browser notifications are best effort and only used when permission has been granted.</p></fieldset>
         <label className="sm:col-span-2">Notes<textarea value={draft.public_notes} onChange={(e) => setDraft({...draft,public_notes:e.target.value})} className="mt-1 min-h-24 w-full rounded-lg border border-border bg-background p-3"/></label>
         {editing && <fieldset className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Public read-only sharing</legend>
@@ -709,7 +724,7 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
       {message && <p role={stale ? "alert" : "status"} className="mt-4 text-sm">{message}</p>}
       {stale && <button type="button" onClick={() => void reloadLatest()} className="mt-2 rounded-lg border border-border px-3">Reload latest appointment</button>}
       <div className="mt-6 flex flex-wrap gap-2"><button disabled={pending} className="rounded-lg bg-primary px-4 font-semibold text-white disabled:opacity-60">{pending ? "Saving…" : "Save appointment"}</button>
-        {editing && <><button type="button" onClick={() => editing.archived ? void patch(editing,{archived:false}) : void undoablePatch(editing,{archived:true},undoAppointmentValues("archive",editing),"Appointment archived.")} className="flex items-center gap-1 rounded-lg border border-border px-3">{editing.archived?<RotateCcw size={17}/>:<Archive size={17}/>} {editing.archived?"Restore":"Archive"}</button><button type="button" onClick={() => remove(editing)} className="ml-auto flex items-center gap-1 rounded-lg border border-red-700 px-3 text-red-700"><Trash2 size={17}/>Delete permanently</button></>}
+        {editing && <button type="button" onClick={() => remove(editing)} className="ml-auto flex items-center gap-1 rounded-lg border border-red-700 px-3 text-red-700"><Trash2 size={17}/>Delete permanently</button>}
       </div>
     </form></div>}
   </main>;

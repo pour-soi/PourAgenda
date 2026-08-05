@@ -1,8 +1,8 @@
 import type { Appointment, AppointmentOccurrence } from "@/types/domain";
 
-export type AppointmentListSection = "upcoming" | "today" | "this-week" | "completed" | "cancelled" | "archived";
+export type AppointmentListSection = "upcoming" | "today" | "this-week" | "completed" | "cancelled";
 export const appointmentListSections = [
-  "upcoming", "today", "this-week", "archived",
+  "upcoming", "today", "this-week",
 ] as const satisfies readonly AppointmentListSection[];
 export type AppointmentCursor = { value: string; id: string };
 

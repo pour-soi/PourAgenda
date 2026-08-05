@@ -7,9 +7,9 @@
 - `appointment_shares`: hashed random tokens, expiry, revocation, and minimal disclosure flags.
 - `appointment_activity`: small user-readable action history without sensitive before/after payloads.
 
-Indexes cover calendar ranges, status/archive lists, categories, contacts, sharing, and activity. `updated_at` triggers support optimistic concurrency checks.
+Indexes cover calendar ranges, status lists, categories, contacts, sharing, and activity. `updated_at` triggers support optimistic concurrency checks.
 
-Phase 2 uses the existing appointment schema without a new migration. `kind` is the Work/Personal classification. `archived` is independent from status, cancellation is never deletion, and completed/cancelled timestamps are recorded by their respective actions. Active calendar queries overlap a bounded visible range. Long lists and search results use bounded keyset pages ordered by their section timestamp and appointment ID; no fixed full-history browser download is used.
+Phase 2 uses the existing appointment schema without a new migration. Cancellation is never deletion, and completed/cancelled timestamps are recorded by their respective actions. Active calendar queries overlap a bounded visible range. Long lists and search results use bounded keyset pages ordered by their section timestamp and appointment ID; no fixed full-history browser download is used. The initial schema retains a legacy `archived` column for migration compatibility, but the application does not expose or use it.
 
 Phase 3 also requires no migration. A parent row has `recurrence_frequency`, `recurrence_interval`, and optional `recurrence_until`/`recurrence_count`. Exception rows have no recurrence rule and reference the parent through `(series_id, user_id)` plus a unique `original_occurrence_start`. Parent deletion cascades to exceptions; the owner foreign key, existing RLS policy, grants, and `updated_at` trigger apply equally to both.
 

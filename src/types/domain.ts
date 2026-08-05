@@ -21,7 +21,6 @@ export interface Appointment {
   public_notes: string | null;
   private_notes: string | null;
   status: AppointmentStatus;
-  archived: boolean;
   reminder_minutes?: number[];
   recurrence_frequency?: RecurrenceFrequency | null;
   recurrence_interval?: number | null;

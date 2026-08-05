@@ -28,7 +28,6 @@ export const previewAppointment = (
   public_notes: null,
   private_notes: null,
   status: "confirmed",
-  archived: false,
   reminder_minutes: [10],
   recurrence_frequency: null,
   recurrence_interval: null,
