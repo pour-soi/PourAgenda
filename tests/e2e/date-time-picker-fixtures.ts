@@ -7,8 +7,9 @@ export async function fillDateTimePicker(field: Locator, value: string) {
   const label = await field.getAttribute("aria-label");
   if (!label) throw new Error("Date/time picker compatibility field has no label.");
   const root = field.locator("..");
-  await root.getByRole("button", { name: `Choose ${label.toLowerCase()} date` }).click();
-  const dateDialog = root.getByRole("dialog", { name: `${label} date picker` });
+  const dateName = label.toLowerCase().endsWith(" date") ? label.toLowerCase() : `${label.toLowerCase()} date`;
+  await root.getByRole("button", { name: `Choose ${dateName}` }).click();
+  const dateDialog = root.getByRole("dialog", { name: label.toLowerCase().endsWith(" date") ? `${label} picker` : `${label} date picker` });
   const [year, month, day] = dateKey.split("-").map(Number);
   for (let index = 0; index < 240; index += 1) {
     const heading = (await dateDialog.locator(".date-time-picker-month strong").textContent()) ?? "";

@@ -544,20 +544,23 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
   }
   async function skipPreviewOccurrence(item: RecurrencePreviewItem) {
     const occurrence = item.occurrence;
-    const { occurrence_id: _id, series_parent_id, is_generated_occurrence: _generated, ...row } = occurrence;
-    void _id; void _generated;
-    const { error } = await supabase.from("appointments").insert({ ...row, id: undefined,
+    const { id: _rowId, occurrence_id: _id, series_parent_id, is_generated_occurrence: _generated,
+      created_at: _createdAt, updated_at: _updatedAt, ...row } = occurrence;
+    void _rowId; void _id; void _generated; void _createdAt; void _updatedAt;
+    if (!series_parent_id) { setMessage("This occurrence is not attached to a saved series."); return; }
+    const { error } = await supabase.from("appointments").upsert({ ...row,
       status: "cancelled", cancelled_at: new Date().toISOString(), recurrence_frequency: null,
       recurrence_interval: null, recurrence_until: null, recurrence_count: null,
-      series_id: series_parent_id, original_occurrence_start: occurrence.original_occurrence_start });
-    if (error) setMessage(appointmentError(error)); else { setMessage("Occurrence skipped."); void load(); }
+      series_id: series_parent_id, original_occurrence_start: item.originalStartsAt },
+    { onConflict: "series_id,original_occurrence_start" });
+    if (error) setMessage(appointmentError(error)); else { setMessage("Occurrence skipped."); await load(); }
   }
   async function restorePreviewOccurrence(item: RecurrencePreviewItem) {
     if (!item.exception) return;
     const { data, error } = await supabase.from("appointments").delete().eq("id", item.exception.id)
       .eq("updated_at", item.exception.updated_at).select("id");
     if (error) setMessage(appointmentError(error)); else if (!data?.length) setMessage("This occurrence changed on another device. Refresh and try again.");
-    else { setMessage("Occurrence restored."); void load(); }
+    else { setMessage("Occurrence restored."); await load(); }
   }
   function editPreviewOccurrence(item: RecurrencePreviewItem) {
     setOpen(false);
@@ -710,7 +713,7 @@ export function AgendaShell({ email, userId, timezone, timeFormatPreference, def
         <div><span className="font-medium">Start</span><EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,duration > 0 ? duration : defaultDurationMinutes * 60_000); setDraft({...draft,starts_at:start,ends_at:end}); }}/></div>
         <div><span className="font-medium">End</span><EnglishDateTimePicker ariaLabel="End" value={draft.ends_at} dateOnly={draft.all_day} timeFormat={timeFormat} min={draft.starts_at} describedBy="event-range-error" onChange={(ends_at) => { endOverridden.current=true; setDraft({...draft,ends_at}); }}/>{draft.ends_at < draft.starts_at && <span id="event-range-error" role="alert" className="mt-1 block text-sm text-red-700">End must not be earlier than Start.</span>}</div>
         <label>Location<input value={draft.location} onChange={(e) => setDraft({...draft,location:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
-        {editScope !== "occurrence" && <RecurrenceEditor appointment={{...editing, id: editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===editing.id) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean(editing?.id && editScope === "series")} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={(item)=>void skipPreviewOccurrence(item)} onRestore={(item)=>void restorePreviewOccurrence(item)} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
+        {editScope !== "occurrence" && <RecurrenceEditor appointment={{...editing, id: editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===editing.id) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean(editing?.id && !editing.series_id && editing.recurrence_frequency)} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={skipPreviewOccurrence} onRestore={restorePreviewOccurrence} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
         <fieldset className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Reminders</legend><div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option)=><label key={option.value} className="flex items-center gap-2"><input aria-label={option.value === 0 ? "Reminder when event begins" : `Reminder ${option.label.toLowerCase()}`} type="checkbox" checked={draft.reminder_minutes.includes(option.value)} onChange={(e)=>setDraft({...draft,reminder_minutes:normalizeReminderMinutes(e.target.checked?[...draft.reminder_minutes,option.value]:draft.reminder_minutes.filter((value)=>value!==option.value))})}/><span aria-hidden="true">{option.label}</span></label>)}</div><p className="mt-2 text-sm text-muted">Browser notifications are best effort and only used when permission has been granted.</p></fieldset>
         <label className="sm:col-span-2">Notes<textarea value={draft.public_notes} onChange={(e) => setDraft({...draft,public_notes:e.target.value})} className="mt-1 min-h-24 w-full rounded-lg border border-border bg-background p-3"/></label>
         {editing && <fieldset className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Public read-only sharing</legend>

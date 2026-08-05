@@ -60,6 +60,8 @@ export function EnglishDateTimePicker({
   timeFormat = "12h",
   min,
   describedBy,
+  showDateLabel = true,
+  dateButtonAriaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -68,6 +70,8 @@ export function EnglishDateTimePicker({
   timeFormat?: TimeFormat;
   min?: string;
   describedBy?: string;
+  showDateLabel?: boolean;
+  dateButtonAriaLabel?: string;
 }) {
   const selected = parseDate(value);
   const initial = selected ?? (() => {
@@ -80,6 +84,8 @@ export function EnglishDateTimePicker({
   const dateTrigger = useRef<HTMLButtonElement>(null);
   const timeTrigger = useRef<HTMLButtonElement>(null);
   const controlName = ariaLabel.toLowerCase();
+  const dateControlName = controlName.endsWith(" date") ? controlName : `${controlName} date`;
+  const dateDialogName = ariaLabel.toLowerCase().endsWith(" date") ? `${ariaLabel} picker` : `${ariaLabel} date picker`;
 
   useEffect(() => {
     if (!open) return;
@@ -136,8 +142,8 @@ export function EnglishDateTimePicker({
       <input className="sr-only" tabIndex={-1} readOnly aria-label={ariaLabel} value={formatEnglishDateTime(value, dateOnly, timeFormat)} />
       <div className="date-time-picker-controls" data-date-only={dateOnly || undefined}>
         <div className="date-time-picker-control">
-          <span>Date</span>
-          <button ref={dateTrigger} type="button" aria-label={`Choose ${controlName} date`} aria-haspopup="dialog" aria-expanded={open === "date"} aria-describedby={describedBy} onClick={() => openPicker("date")}>
+          {showDateLabel && <span>Date</span>}
+          <button ref={dateTrigger} type="button" aria-label={dateButtonAriaLabel ?? `Choose ${dateControlName}`} aria-haspopup="dialog" aria-expanded={open === "date"} aria-describedby={describedBy} onClick={() => openPicker("date")}>
             <span>{formatEnglishDate(value)}</span><CalendarDays aria-hidden="true" size={18} />
           </button>
         </div>
@@ -149,7 +155,7 @@ export function EnglishDateTimePicker({
         </div>}
       </div>
 
-      {open === "date" && <div className="date-time-picker-popover" role="dialog" aria-label={`${ariaLabel} date picker`}>
+      {open === "date" && <div className="date-time-picker-popover" role="dialog" aria-label={dateDialogName}>
         <div className="date-time-picker-month">
           <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month"><ChevronLeft aria-hidden="true" /></button>
           <strong>{ENGLISH_MONTHS[visibleMonth.month - 1]} {visibleMonth.year}</strong>

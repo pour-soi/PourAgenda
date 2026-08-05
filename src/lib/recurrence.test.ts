@@ -47,6 +47,7 @@ describe("bounded recurrence expansion", () => {
       original_occurrence_start: generated[3].original_occurrence_start, starts_at: "2026-03-12T20:00:00.000Z", ends_at: "2026-03-12T21:00:00.000Z" });
     const preview = recurrencePreviewWithExceptions(series({ recurrence_count: 4 }), [skipped, edited, moved], 4);
     expect(preview.map((item) => item.state)).toEqual(["normal", "skipped", "edited", "moved"]);
+    expect(preview.map((item) => item.originalStartsAt)).toEqual(generated.map((item) => item.original_occurrence_start));
     expect(new Set(preview.map((item) => item.occurrence.occurrence_id)).size).toBe(4);
   });
   it("handles boundary and empty ranges", () => {
