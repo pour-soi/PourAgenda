@@ -26,6 +26,18 @@ export function detectSystemHourCycle(): ResolvedHourCycle {
     : "h12";
 }
 
+export function detectSystemTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+export function resolveActiveTimezone(
+  configuredTimezone: string,
+  automaticTimezone: boolean,
+  systemTimezone = detectSystemTimezone(),
+): string {
+  return automaticTimezone && systemTimezone ? systemTimezone : configuredTimezone;
+}
+
 export function timeDisplayOptions(timeFormat: TimeFormat): Intl.DateTimeFormatOptions {
   return {
     hour: timeFormat === "24h" ? "2-digit" : "numeric",

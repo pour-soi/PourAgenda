@@ -85,6 +85,17 @@ describe("appointment guarantees", () => {
       starts_at: "2026-08-02T00:00:00.000Z", ends_at: "2026-08-03T00:00:00.000Z",
     })).toThrow("intended_local_start");
   });
+  it("round-trips timed editor values through PDT, PST, and midnight", () => {
+    for (const [instant, local] of [
+      ["2026-08-18T16:10:00.000Z", "2026-08-18T09:10"],
+      ["2026-01-18T17:10:00.000Z", "2026-01-18T09:10"],
+      ["2026-08-19T06:30:00.000Z", "2026-08-18T23:30"],
+      ["2026-08-19T07:30:00.000Z", "2026-08-19T00:30"],
+    ]) {
+      expect(toLocalInput(instant, "America/Los_Angeles")).toBe(local);
+      expect(localInputToUtc(local, "America/Los_Angeles")).toBe(instant);
+    }
+  });
   it("restores the exact pre-cancellation state", () => {
     expect(undoAppointmentValues(appointment)).toEqual({ status: "confirmed", cancelled_at: null });
   });

@@ -7,6 +7,7 @@ import {
   fullCalendarTimeDisplayOptions,
   normalizeTimeFormat,
   normalizeTimeFormatPreference,
+  resolveActiveTimezone,
   resolveTimeFormat,
 } from "./date-format";
 
@@ -43,5 +44,16 @@ describe("fixed en-US display formatting", () => {
     expect(formatTime("2026-08-18T12:00:00.000Z", "UTC", "12h")).toBe("12:00 PM");
     expect(formatTime("2026-08-18T00:00:00.000Z", "UTC", "24h")).toBe("00:00");
     expect(formatTime("2026-08-18T12:00:00.000Z", "UTC", "24h")).toBe("12:00");
+  });
+
+  it("uses the browser timezone only when automatic detection is enabled", () => {
+    expect(resolveActiveTimezone("UTC", true, "America/Los_Angeles")).toBe("America/Los_Angeles");
+    expect(resolveActiveTimezone("UTC", false, "America/Los_Angeles")).toBe("UTC");
+  });
+
+  it("converts UTC instants to PDT and PST without a fixed offset", () => {
+    expect(formatTime("2026-08-18T16:10:00.000Z", "America/Los_Angeles", "24h")).toBe("09:10");
+    expect(formatTime("2026-08-18T17:30:00.000Z", "America/Los_Angeles", "24h")).toBe("10:30");
+    expect(formatTime("2026-01-18T17:10:00.000Z", "America/Los_Angeles", "24h")).toBe("09:10");
   });
 });

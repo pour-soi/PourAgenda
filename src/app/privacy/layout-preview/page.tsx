@@ -4,19 +4,22 @@ import { AgendaShell } from "@/components/agenda-shell";
 export default async function LayoutPreviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ timeFormat?: string }>;
+  searchParams: Promise<{ timeFormat?: string; automaticTimezone?: string }>;
 }) {
   if (process.env.POURAGENDA_LAYOUT_PREVIEW !== "1") notFound();
-  const requestedTimeFormat = (await searchParams).timeFormat;
+  const resolvedSearchParams = await searchParams;
+  const requestedTimeFormat = resolvedSearchParams.timeFormat;
   const timeFormatPreference = requestedTimeFormat === "locale" || requestedTimeFormat === "24h"
     ? requestedTimeFormat
     : "12h";
+  const automaticTimezone = resolvedSearchParams.automaticTimezone === "true";
 
   return (
     <AgendaShell
       email="Private local preview"
       userId="layout-preview"
       timezone="UTC"
+      automaticTimezone={automaticTimezone}
       timeFormatPreference={timeFormatPreference}
       defaultDuration={60}
       defaultReminders={[10]}
