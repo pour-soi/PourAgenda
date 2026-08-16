@@ -50,7 +50,9 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
       const frame = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
       expect(frame!.height).toBeGreaterThanOrEqual(56);
       expect(frame!.height, `${viewport.width}px month cell height`).toBeLessThanOrEqual(viewport.width < 390 ? 66 : 76);
-      await expect(targetCell.locator(".fc-more-link")).toHaveText("+1");
+      await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("2");
+      await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
+      await expect(targetCell).not.toContainText(/\+\d+/);
       expect(await targetCell.locator('[data-appointment-id]:visible').count()).toBe(1);
     }
 
@@ -124,7 +126,7 @@ test("mobile calendar interactions preserve date, context, and readable time pos
 
   const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
   const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
-  await targetCell.locator(".fc-more-link").click();
+  await targetCell.locator(".mobile-month-event-count").click();
   const sheet = page.getByRole("dialog", { name: "Wednesday, July 29" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("button")).toHaveCount(2);
@@ -204,19 +206,37 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
 
   const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
   const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
-  const visibleEvent = targetCell.locator('[data-appointment-id="preview-all-day"]:visible, [data-appointment-id="preview-1"]:visible').first();
-  if (await visibleEvent.count()) {
-    await visibleEvent.click();
-    await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
-    await expect(page.getByRole("dialog", { name: "Wednesday, July 29" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Close" }).click();
-  }
+  const neighborCell = page.locator('.fc-daygrid-day[data-date="2026-07-30"]');
+  const count = targetCell.locator(".mobile-month-event-count");
+  const dateNumber = targetCell.locator(".mobile-month-date-number");
+  await expect(count).toHaveText(String(state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length));
+  await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
+  await expect(targetCell).not.toContainText(/\+\d+/);
 
-  const overflowLink = targetCell.locator(".fc-more-link:visible");
-  if (await overflowLink.count()) await overflowLink.click();
-  else await targetCell.locator(".fc-daygrid-day-top").click();
+  const frameBounds = (await targetCell.locator(".fc-daygrid-day-frame").boundingBox())!;
+  const countBounds = (await count.boundingBox())!;
+  const dateBounds = (await dateNumber.boundingBox())!;
+  expect(countBounds.x).toBeLessThan(dateBounds.x);
+  expect(dateBounds.x + dateBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
+
+  const targetEventBounds = (await targetCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
+  const neighborEventBounds = (await neighborCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
+  expect(Math.abs(targetEventBounds.y - neighborEventBounds.y)).toBeLessThan(1);
+  expect(targetEventBounds.height).toBeGreaterThanOrEqual(25);
+  expect(targetEventBounds.x).toBeGreaterThanOrEqual(frameBounds.x);
+  expect(targetEventBounds.x + targetEventBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
+
+  const visibleEvent = targetCell.locator('[data-appointment-id="preview-all-day"]:visible, [data-appointment-id="preview-1"]:visible').first();
+  await visibleEvent.click();
+  await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Wednesday, July 29" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Close" }).click();
+
+  await count.click();
   const sheet = page.getByRole("dialog", { name: "Wednesday, July 29" });
   await expect(sheet).toBeVisible();
+  await expect(page.locator(".calendar-day-sheet-backdrop")).toHaveCount(1);
+  await expect(page.locator(".fc-popover:visible")).toHaveCount(0);
   const rows = sheet.getByRole("button");
   await expect(rows.first()).toContainText("All day");
   await expect(rows.first()).toContainText("Conference day");
@@ -232,8 +252,11 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   await expect(page.locator(".calendar-toolbar-title")).toHaveText(monthTitle ?? "");
   await expect(page.getByRole("button", { name: "Month", exact: true })).toHaveAttribute("aria-pressed", "true");
 
-  await targetCell.locator(".fc-daygrid-day-top").click();
+  const header = targetCell.locator(".mobile-month-day-header");
+  const headerBounds = (await header.boundingBox())!;
+  await header.click({ position: { x: Math.min(countBounds.width + 2, headerBounds.width - dateBounds.width - 2), y: 20 } });
   await expect(sheet).toBeVisible();
+  await expect(page.locator(".fc-popover:visible")).toHaveCount(0);
   await sheet.dispatchEvent("touchstart", { touches: [{ identifier: 1, clientX: 100, clientY: 100 }] });
   await sheet.dispatchEvent("touchend", { changedTouches: [{ identifier: 1, clientX: 100, clientY: 180 }] });
   await expect(sheet).toBeHidden();

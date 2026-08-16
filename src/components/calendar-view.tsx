@@ -5,7 +5,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import listPlugin from "@fullcalendar/list";
 import interactionPlugin from "@fullcalendar/interaction";
-import type { DateSelectArg, DatesSetArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
+import type { DateSelectArg, DatesSetArg, DayCellContentArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -301,6 +301,38 @@ export default function CalendarView({
     if (!calendarEventsForDate(events, dateKey, timezone).length) return;
     setDaySheet({ dateKey, trigger });
   }, [events, timezone]);
+  const mobileMonthDayContent = useCallback((arg: DayCellContentArg) => {
+    const dateKey = localDateKey(arg.date);
+    const eventCount = calendarEventsForDate(events, dateKey, timezone).length;
+    const openFromCount = (trigger: HTMLElement) => openDaySheet(dateKey, trigger);
+
+    return (
+      <span className="mobile-month-day-header">
+        {eventCount > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="mobile-month-event-count"
+            aria-label={`${eventCount} ${eventCount === 1 ? "appointment" : "appointments"} on ${daySheetTitle(dateKey)}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openFromCount(event.currentTarget);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              openFromCount(event.currentTarget);
+            }}
+          >
+            {eventCount}
+          </span>
+        )}
+        <span className="mobile-month-date-number">{arg.dayNumberText}</span>
+      </span>
+    );
+  }, [events, openDaySheet, timezone]);
 
   useEffect(() => {
     if (!daySheet) return;
@@ -422,6 +454,7 @@ export default function CalendarView({
             arg.allDay,
           )}
           selectAllow={() => !(isMobile && currentView === "dayGridMonth")}
+          dayCellContent={isMobile && currentView === "dayGridMonth" ? mobileMonthDayContent : undefined}
           dateClick={(arg) => {
             if (!isMobile || currentView !== "dayGridMonth") return;
             openDaySheet(arg.dateStr.slice(0, 10), arg.jsEvent.currentTarget instanceof HTMLElement
@@ -466,12 +499,10 @@ export default function CalendarView({
             />
           )}
           dayMaxEvents={isMobile ? 1 : true}
-          moreLinkContent={(arg) => `+${arg.num}`}
-          moreLinkClick={(arg) => {
-            if (!isMobile || currentView !== "dayGridMonth") return "popover";
-            openDaySheet(arg.date.toISOString().slice(0, 10), arg.jsEvent.currentTarget instanceof HTMLElement
-              ? arg.jsEvent.currentTarget
-              : null);
+          moreLinkContent={(arg) => isMobile ? "" : `+${arg.num}`}
+          moreLinkClick={() => {
+            if (isMobile && currentView === "dayGridMonth") return;
+            return "popover";
           }}
           stickyHeaderDates
           now={() => toLocalInput(new Date().toISOString(), timezone)}

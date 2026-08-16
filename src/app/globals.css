@@ -579,46 +579,74 @@ button, a, input, select { min-height: var(--touch); }
     font-weight: 650;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-frame {
-    display: flex;
+    display: grid;
+    grid-template-rows: 28px minmax(26px, 1fr);
     min-height: clamp(58px, 17vw, 72px);
-    flex-direction: column;
   }
-  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-top { padding: .125rem .25rem 0; }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-top {
+    display: block;
+    min-width: 0;
+    padding: .125rem .25rem 0;
+  }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-number {
+    display: block;
+    width: 100%;
     min-height: 24px;
-    padding: .125rem .1875rem;
+    padding: 0;
     font-size: .9375rem;
     line-height: 1.25rem;
   }
-  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-events {
+  .pouragenda-calendar .fc .mobile-month-day-header {
+    display: grid;
+    width: 100%;
     min-width: 0;
-    margin-top: auto !important;
-    margin-bottom: 1px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+  .pouragenda-calendar .fc .mobile-month-event-count {
+    display: inline-flex;
+    width: max-content;
+    min-height: 24px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: .125rem 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .75rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+  }
+  .pouragenda-calendar .fc .mobile-month-event-count:focus-visible {
+    border-radius: .35rem;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .pouragenda-calendar .fc .mobile-month-date-number {
+    min-width: 0;
+    padding: .125rem 0;
+    text-align: right;
+  }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-events {
+    align-self: end;
+    height: 27px;
+    min-width: 0;
+    margin: 0 0 1px !important;
+    overflow: hidden;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-bottom {
-    position: static;
-    min-height: 18px;
-    margin: 0 2px 1px;
+    display: none;
   }
   .pouragenda-calendar .fc .fc-more-link {
-    position: relative;
-    min-height: 18px;
-    padding-inline: 2px;
-    font-size: .6875rem;
-    line-height: 1;
-  }
-  .pouragenda-calendar .fc .fc-more-link::after {
-    position: absolute;
-    inset: -8px -6px;
-    content: "";
+    display: none;
   }
   .pouragenda-calendar .fc .fc-daygrid-event {
-    min-height: 22px;
+    min-height: 25px;
     margin-inline: 1px;
-    padding: 2px 3px;
-    font-size: .75rem;
+    padding: 3px 4px;
+    font-size: .775rem;
     line-height: 1.125rem;
   }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-popover { display: none !important; }
   .pouragenda-calendar .fc .fc-daygrid-event .calendar-event-content {
     display: block;
     text-overflow: ellipsis;
