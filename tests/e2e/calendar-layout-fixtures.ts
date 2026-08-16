@@ -108,6 +108,7 @@ export async function openCalendarLayoutPreview(page: Page, state = createCalend
   await page.locator(".fc").waitFor();
   await page.evaluate((date) => window.__pourAgendaCalendar?.gotoDate(date), previewDate);
   if (state.appointments.length && !state.fail) {
-    await page.locator(`[data-appointment-id="${state.appointments[0].id}"]`).first().waitFor();
+    await page.waitForFunction(() => (window.__pourAgendaCalendar?.getEvents().length ?? 0) > 0);
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   }
 }

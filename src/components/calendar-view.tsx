@@ -7,30 +7,19 @@ import listPlugin from "@fullcalendar/list";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DateSelectArg, DatesSetArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { DayExperience } from "@/components/day-experience";
 import { localInputToUtc, toLocalInput } from "@/lib/appointments";
 import { dayKind, zonedDateKey } from "@/lib/personal-productivity";
-import { fullCalendarTimeDisplayOptions, type TimeFormat } from "@/lib/date-format";
+import { formatTime, fullCalendarTimeDisplayOptions, type TimeFormat } from "@/lib/date-format";
+import type { CalendarEvent } from "@/lib/calendar-events";
 
 declare global {
   interface Window {
     __pourAgendaCalendar?: ReturnType<FullCalendar["getApi"]>;
   }
 }
-
-type CalendarEvent = {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  allDay: boolean;
-  backgroundColor: string;
-  borderColor: string;
-  textColor: string;
-  classNames: string[];
-  extendedProps: { category: string; recurring: boolean; location?: string | null; notes?: string | null };
-};
 
 const MOBILE_WEEK_VIEW = "timeGridMobileWeek";
 const MOBILE_QUERY = "(max-width: 599px), (max-height: 500px) and (max-width: 932px)";
@@ -50,6 +39,80 @@ const localDateKey = (date: Date) => [
   (date.getMonth() + 1).toString().padStart(2, "0"),
   date.getDate().toString().padStart(2, "0"),
 ].join("-");
+const shiftDateKey = (dateKey: string, days: number) => {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+export function calendarEventsForDate(events: CalendarEvent[], dateKey: string, timezone: string) {
+  const nextDateKey = shiftDateKey(dateKey, 1);
+  return events
+    .filter((event) => {
+      if (event.allDay) return event.start.slice(0, 10) <= dateKey && event.end.slice(0, 10) > dateKey;
+      const localStart = toLocalInput(event.start, timezone);
+      const localEnd = toLocalInput(event.end, timezone);
+      return localStart < `${nextDateKey}T00:00` && localEnd > `${dateKey}T00:00`;
+    })
+    .sort((left, right) => Number(right.allDay) - Number(left.allDay)
+      || Date.parse(left.start) - Date.parse(right.start));
+}
+
+const dayDifference = (startKey: string, endKey: string) => (
+  Date.parse(`${endKey}T00:00:00.000Z`) - Date.parse(`${startKey}T00:00:00.000Z`)
+) / 86_400_000;
+
+export function dayEventTimeLabel(event: CalendarEvent, timezone: string, timeFormat: TimeFormat) {
+  if (event.allDay) return "All day";
+  const startKey = toLocalInput(event.start, timezone).slice(0, 10);
+  const endKey = toLocalInput(event.end, timezone).slice(0, 10);
+  const extraDays = dayDifference(startKey, endKey);
+  const suffix = extraDays > 0 ? ` (+${extraDays} ${extraDays === 1 ? "day" : "days"})` : "";
+  return `${formatTime(event.start, timezone, timeFormat)}–${formatTime(event.end, timezone, timeFormat)}${suffix}`;
+}
+
+const daySheetTitle = (dateKey: string) => new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+}).format(new Date(`${dateKey}T12:00:00.000Z`));
+
+function CalendarEventContent({
+  id,
+  title,
+  category,
+  categoryColor,
+  textColor,
+  timeText,
+  recurring,
+}: {
+  id: string;
+  title: string;
+  category: string;
+  categoryColor: string;
+  textColor: string;
+  timeText: string;
+  recurring: boolean;
+}) {
+  const contentRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const element = contentRef.current?.closest<HTMLElement>(".fc-event");
+    if (!element) return;
+    element.dataset.appointmentId = id;
+    element.style.setProperty("--category-color", categoryColor);
+    element.style.setProperty("--category-text-color", textColor);
+  }, [categoryColor, id, textColor]);
+
+  return (
+    <span ref={contentRef} className="calendar-event-content" aria-label={`${title}, ${category}`}>
+      <strong className="calendar-event-title">{title}</strong>
+      {timeText && <span className="calendar-event-time">{timeText}</span>}
+      {recurring && <span className="calendar-event-recurring" aria-label="Recurring appointment">↻</span>}
+    </span>
+  );
+}
 
 export function calendarWallTimeToInstant(date: Date, timezone: string, allDay: boolean) {
   if (allDay) return new Date(`${localDateKey(date)}T00:00:00.000Z`);
@@ -138,6 +201,9 @@ export default function CalendarView({
   const [currentView, setCurrentView] = useState(initialView);
   const [title, setTitle] = useState("");
   const [selectedDateKey, setSelectedDateKey] = useState(() => zonedDateKey(new Date(), timezone));
+  const [daySheet, setDaySheet] = useState<{ dateKey: string; trigger: HTMLElement | null } | null>(null);
+  const daySheetRef = useRef<HTMLDivElement>(null);
+  const swipeStartY = useRef<number | null>(null);
   const pendingScroll = useRef<{ key: string; requestedAt: number; date: Date } | null>(null);
   const completedScroll = useRef("");
 
@@ -156,6 +222,7 @@ export default function CalendarView({
       const responsiveView = responsiveCalendarView(calendar.view.type, isMobile);
       if (responsiveView !== calendar.view.type) calendar.changeView(responsiveView, calendar.getDate());
       else if (isMobile) setTitle(compactCalendarTitle(calendar.view));
+      calendar.updateSize();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [isMobile]);
@@ -221,6 +288,34 @@ export default function CalendarView({
     end: toLocalInput(event.end, timezone),
   });
   const calendarTimeDisplay = fullCalendarTimeDisplayOptions(timeFormat);
+  const selectedDayEvents = useMemo(
+    () => daySheet ? calendarEventsForDate(events, daySheet.dateKey, timezone) : [],
+    [daySheet, events, timezone],
+  );
+  const closeDaySheet = useCallback(() => {
+    const trigger = daySheet?.trigger;
+    setDaySheet(null);
+    window.requestAnimationFrame(() => trigger?.focus());
+  }, [daySheet]);
+  const openDaySheet = useCallback((dateKey: string, trigger: HTMLElement | null) => {
+    if (!calendarEventsForDate(events, dateKey, timezone).length) return;
+    setDaySheet({ dateKey, trigger });
+  }, [events, timezone]);
+
+  useEffect(() => {
+    if (!daySheet) return;
+    const frame = window.requestAnimationFrame(() => daySheetRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [daySheet]);
+
+  useEffect(() => {
+    if (!daySheet) return;
+    const application = document.querySelector<HTMLElement>("main");
+    if (!application) return;
+    const wasInert = application.inert;
+    application.inert = true;
+    return () => { application.inert = wasInert; };
+  }, [daySheet]);
 
   useEffect(() => {
     const request = pendingScroll.current;
@@ -231,6 +326,12 @@ export default function CalendarView({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [dataLoadedAt, events, isManagedTimeView, timezone]);
+
+  useEffect(() => {
+    if (!isMobile || currentView !== "dayGridMonth") return;
+    const frame = window.requestAnimationFrame(() => calendarRef.current?.getApi().updateSize());
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentView, events, isMobile]);
 
   return (
     <div className="calendar-card rounded-[var(--radius)] border border-border bg-surface">
@@ -320,11 +421,16 @@ export default function CalendarView({
             arg.allDay ? calendarWallTimeToInstant(arg.end, timezone, true) : arg.end,
             arg.allDay,
           )}
+          selectAllow={() => !(isMobile && currentView === "dayGridMonth")}
+          dateClick={(arg) => {
+            if (!isMobile || currentView !== "dayGridMonth") return;
+            openDaySheet(arg.dateStr.slice(0, 10), arg.jsEvent.currentTarget instanceof HTMLElement
+              ? arg.jsEvent.currentTarget
+              : null);
+          }}
           eventClick={(arg: EventClickArg) => onOpen(arg.event.id)}
           eventDidMount={(arg) => {
             arg.el.dataset.appointmentId = arg.event.id;
-            arg.el.style.setProperty("--category-color", arg.event.backgroundColor);
-            arg.el.style.setProperty("--category-text-color", arg.event.textColor);
             const sourceEvent = events.find((event) => event.id === arg.event.id);
             if (arg.view.type === "timeGridDay" && sourceEvent && !sourceEvent.allDay) {
               const now = Date.now();
@@ -348,15 +454,25 @@ export default function CalendarView({
             );
           }}
           eventContent={(arg) => (
-            <span className="calendar-event-content" aria-label={`${arg.event.title}, ${arg.event.extendedProps.category}`}>
-              <strong className="calendar-event-title">{arg.event.title}</strong>
-              {arg.timeText && <span className="calendar-event-time">{arg.timeText}</span>}
-              {arg.event.extendedProps.recurring && <span className="calendar-event-recurring" aria-label="Recurring appointment">↻</span>}
-            </span>
+            <CalendarEventContent
+              key={`${arg.event.id}:${arg.event.extendedProps.categoryColor}:${arg.event.textColor}`}
+              id={arg.event.id}
+              title={arg.event.title}
+              category={arg.event.extendedProps.category}
+              categoryColor={arg.event.extendedProps.categoryColor}
+              textColor={arg.event.textColor}
+              timeText={arg.timeText}
+              recurring={arg.event.extendedProps.recurring}
+            />
           )}
           dayMaxEvents={isMobile ? 1 : true}
           moreLinkContent={(arg) => `+${arg.num}`}
-          moreLinkClick="popover"
+          moreLinkClick={(arg) => {
+            if (!isMobile || currentView !== "dayGridMonth") return "popover";
+            openDaySheet(arg.date.toISOString().slice(0, 10), arg.jsEvent.currentTarget instanceof HTMLElement
+              ? arg.jsEvent.currentTarget
+              : null);
+          }}
           stickyHeaderDates
           now={() => toLocalInput(new Date().toISOString(), timezone)}
           nowIndicator={currentView !== "timeGridDay" || dayKind(selectedDateKey, timezone) === "today"}
@@ -372,6 +488,53 @@ export default function CalendarView({
           buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "Agenda" }}
         />
       </div>
+      {isMobile && daySheet && createPortal((
+        <div
+          className="calendar-day-sheet-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeDaySheet();
+          }}
+        >
+          <div
+            ref={daySheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-day-sheet-title"
+            tabIndex={-1}
+            className="calendar-day-sheet"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeDaySheet();
+            }}
+            onTouchStart={(event) => { swipeStartY.current = event.touches[0]?.clientY ?? null; }}
+            onTouchEnd={(event) => {
+              const endY = event.changedTouches[0]?.clientY;
+              if (swipeStartY.current !== null && endY !== undefined && endY - swipeStartY.current > 64) closeDaySheet();
+              swipeStartY.current = null;
+            }}
+            onTouchCancel={() => { swipeStartY.current = null; }}
+          >
+            <div className="calendar-day-sheet-handle" aria-hidden="true" />
+            <h2 id="calendar-day-sheet-title">{daySheetTitle(daySheet.dateKey)}</h2>
+            <div className="calendar-day-sheet-list">
+              {selectedDayEvents.map((event) => (
+                <button
+                  key={event.id}
+                  type="button"
+                  className="calendar-day-sheet-event"
+                  onClick={() => {
+                    setDaySheet(null);
+                    onOpen(event.id);
+                  }}
+                >
+                  <span className="calendar-day-sheet-dot" style={{ backgroundColor: event.backgroundColor }} aria-hidden="true" />
+                  <span className="calendar-day-sheet-time">{dayEventTimeLabel(event, timezone, timeFormat)}</span>
+                  <span className="calendar-day-sheet-event-title">{event.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }

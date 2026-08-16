@@ -11,13 +11,14 @@ import { GlobalEventSearch } from "@/components/global-event-search";
 import { QuickAdd } from "@/components/quick-add";
 import { EnglishDateTimePicker, type TimeFormat } from "@/components/date-time-picker";
 import { detectSystemHourCycle, detectSystemTimezone, formatDate, formatDateTime, formatTime, resolveActiveTimezone, resolveTimeFormat, type TimeFormatPreference } from "@/lib/date-format";
-import { allDayCalendarRange, allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStartToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
+import { allDayEditorRange, allDayEndToInput, allDayEndToUtc, allDayStartToUtc, allDayStorageRange, appointmentError, appointmentInput, findConflicts, localInputToUtc, toLocalInput, undoAppointmentValues } from "@/lib/appointments";
 import { activeFilterCount, appointmentListSections, type AppointmentListSection } from "@/lib/appointment-lists";
 import type { QuickAddResult, SearchableEvent } from "@/lib/personal-productivity";
 import { expandAppointments, findRecurringConflicts, type RecurrencePreviewItem } from "@/lib/recurrence";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { REMINDER_OPTIONS, normalizeReminderMinutes, reminderTimes } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
+import { buildCalendarEvents } from "@/lib/calendar-events";
 import type { Appointment, AppointmentOccurrence, RecurrenceFrequency } from "@/types/domain";
 
 const Calendar = dynamic(() => import("@/components/calendar-view"), {
@@ -39,10 +40,6 @@ const subscribeToSystemTimezone = (onChange: () => void) => {
     window.removeEventListener("focus", onChange);
     document.removeEventListener("visibilitychange", onChange);
   };
-};
-const contrastingText = (color: string) => {
-  const [r, g, b] = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16));
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#17211d" : "#ffffff";
 };
 const localFieldMilliseconds = (value: string) => Date.parse(`${value}:00Z`);
 const shiftLocalField = (value: string, milliseconds: number) =>
@@ -619,20 +616,10 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     void load();
   }
 
-  const calendarEvents = appointments.map((item) => {
-    const categoryData = categories.find((value) => value.id === item.category_id);
-    const color = categoryData?.color ?? "#667168";
-    const allDayRange = item.all_day ? allDayCalendarRange(item) : null;
-    return { id: item.occurrence_id, title: item.title, start: allDayRange?.start ?? item.starts_at, end: allDayRange?.end ?? item.ends_at,
-      allDay: item.all_day, backgroundColor: color, borderColor: color, textColor: contrastingText(color),
-      classNames: item.status === "cancelled" ? ["appointment-cancelled"] : [],
-      extendedProps: {
-        category: categoryData?.name ?? "Other",
-        recurring: Boolean(item.series_parent_id),
-        location: item.location,
-        notes: item.public_notes ?? item.private_notes,
-      } };
-  });
+  const calendarEvents = useMemo(
+    () => buildCalendarEvents(appointments, categories),
+    [appointments, categories],
+  );
   const globalSearchEvents = useMemo(() => {
     const combined: (Appointment | AppointmentOccurrence)[] = [...appointments, ...searchCatalog];
     const seen = new Set<string>();

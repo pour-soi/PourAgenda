@@ -3,8 +3,11 @@ import {
   createCalendarMockState,
   installCalendarLayoutMocks,
   openCalendarLayoutPreview,
+  previewAppointment,
   previewDate,
 } from "./calendar-layout-fixtures";
+
+test.use({ serviceWorkers: "block" });
 
 test("calendar layout follows the approved responsive breakpoints", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One Chromium project covers the exact viewport matrix.");
@@ -122,11 +125,10 @@ test("mobile calendar interactions preserve date, context, and readable time pos
   const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
   const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
   await targetCell.locator(".fc-more-link").click();
-  const popover = page.locator(".fc-more-popover");
-  await expect(popover.locator(".fc-popover-title")).toContainText(/Jul.*29/);
-  await expect(popover.locator('[data-appointment-id="preview-1"]')).toBeVisible();
-  await expect(popover.locator('[data-appointment-id="preview-2"]')).toBeVisible();
-  await popover.locator('[data-appointment-id="preview-2"]').click();
+  const sheet = page.getByRole("dialog", { name: "Wednesday, July 29" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button")).toHaveCount(2);
+  await sheet.getByRole("button", { name: /Design review/ }).click();
   await expect(page.getByRole("dialog", { name: "Edit appointment" }).getByLabel("Title")).toHaveValue("Design review");
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.locator(".calendar-toolbar-title")).toHaveText(monthTitle ?? "");
@@ -179,6 +181,90 @@ test("mobile calendar interactions preserve date, context, and readable time pos
     Math.max(...nodes.map((node) => node.scrollTop)),
   );
   expect(Math.abs(scrollAfterEdit - scrollWhileEditorOpen)).toBeLessThan(4);
+});
+
+test("mobile Month day sheet preserves per-event colors, ordering, and calendar state", async ({ page }, testInfo) => {
+  test.skip(!["desktop", "modern-iphone", "small-iphone"].includes(testInfo.project.name), "Portrait mobile viewport coverage only.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  if (testInfo.project.name === "desktop") await page.setViewportSize({ width: 390, height: 844 });
+  const state = createCalendarMockState();
+  state.appointments.push(
+    previewAppointment("preview-all-day", "Conference day", "planning", "2026-07-29T00:00:00.000Z", "2026-07-29T23:59:59.000Z", true),
+    previewAppointment("preview-crossing", "Late support", "focus", "2026-07-29T23:00:00.000Z", "2026-07-30T01:00:00.000Z"),
+    ...Array.from({ length: 10 }, (_, index) => previewAppointment(
+      `preview-extra-${index}`,
+      `Extra appointment ${index + 1}`,
+      index % 2 ? "personal" : "planning",
+      `2026-07-29T${(10 + index).toString().padStart(2, "0")}:00:00.000Z`,
+      `2026-07-29T${(10 + index).toString().padStart(2, "0")}:30:00.000Z`,
+    )),
+  );
+  await openCalendarLayoutPreview(page, state);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
+  const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
+  const visibleEvent = targetCell.locator('[data-appointment-id="preview-all-day"]:visible, [data-appointment-id="preview-1"]:visible').first();
+  if (await visibleEvent.count()) {
+    await visibleEvent.click();
+    await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Wednesday, July 29" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Close" }).click();
+  }
+
+  const overflowLink = targetCell.locator(".fc-more-link:visible");
+  if (await overflowLink.count()) await overflowLink.click();
+  else await targetCell.locator(".fc-daygrid-day-top").click();
+  const sheet = page.getByRole("dialog", { name: "Wednesday, July 29" });
+  await expect(sheet).toBeVisible();
+  const rows = sheet.getByRole("button");
+  await expect(rows.first()).toContainText("All day");
+  await expect(rows.first()).toContainText("Conference day");
+  await expect(rows.filter({ hasText: "Late support" })).toContainText(/11:00 PM–1:00 AM \(\+1 day\)/);
+  expect(await rows.count()).toBe(state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length);
+  await expect(rows.filter({ hasText: "Design review" }).locator(".calendar-day-sheet-dot")).toHaveCSS("background-color", "rgb(162, 96, 104)");
+  expect(await sheet.locator(".calendar-day-sheet-list").evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
+  await sheet.getByRole("heading").click();
+  await expect(sheet).toBeVisible();
+  await page.locator(".calendar-day-sheet-backdrop").click({ position: { x: 5, y: 5 } });
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".calendar-toolbar-title")).toHaveText(monthTitle ?? "");
+  await expect(page.getByRole("button", { name: "Month", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  await targetCell.locator(".fc-daygrid-day-top").click();
+  await expect(sheet).toBeVisible();
+  await sheet.dispatchEvent("touchstart", { touches: [{ identifier: 1, clientX: 100, clientY: 100 }] });
+  await sheet.dispatchEvent("touchend", { changedTouches: [{ identifier: 1, clientX: 100, clientY: 180 }] });
+  await expect(sheet).toBeHidden();
+
+  await page.locator('.fc-daygrid-day[data-date="2026-07-28"] .fc-daygrid-day-top').click();
+  await expect(page.getByRole("dialog", { name: /Tuesday, July 28/ })).toHaveCount(0);
+});
+
+test("FullCalendar refreshes custom category styles without affecting other appointments", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One Chromium project covers FullCalendar event reuse.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const state = createCalendarMockState();
+  await openCalendarLayoutPreview(page, state);
+
+  const focus = page.locator('[data-appointment-id="preview-1"]:visible').first();
+  const personal = page.locator('[data-appointment-id="preview-2"]:visible').first();
+  await expect.poll(() => focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#375f52");
+  await expect.poll(() => personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
+
+  state.appointments[0] = { ...state.appointments[0], category_id: "planning" };
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.locator('input[aria-label="Search appointments"]:visible').fill(" ");
+  await page.getByRole("button", { name: "Show results" }).click();
+
+  await expect.poll(() => focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#5e7296");
+  await expect.poll(() => personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await expect.poll(() => page.locator('[data-appointment-id="preview-2"]:visible').first()
+    .evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
 });
 
 test("calendar loading, empty, and retry states do not flash misleading content", async ({ page }, testInfo) => {

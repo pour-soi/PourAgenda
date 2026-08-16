@@ -24,7 +24,7 @@ node --version
 pnpm --version
 ```
 
-OpenNext builds are most reliable on Linux. Windows users may use WSL or Linux CI if native symlink creation fails; elevation or system-wide security changes should not be necessary.
+OpenNext builds require Linux-compatible symlink behavior. The maintained production workflow runs OpenNext on a GitHub-hosted Linux runner, so Windows development does not require WSL, local Linux, elevation, or system-wide security changes.
 
 ## 3. Create your Supabase project
 
@@ -151,11 +151,33 @@ Cloudflare Worker names must satisfy Cloudflare’s naming rules; use a unique l
 
 ## 12. Deploy to your Cloudflare account
 
-```bash
-pnpm deploy
+The maintained production workflow is manual and approval-gated:
+
+1. Develop and run the required verification locally on Windows.
+2. Obtain owner approval for the exact verified change set.
+3. Commit and push the approved changes to `main`.
+4. In GitHub, open **Actions**, select **Deploy Production**, and choose **Run workflow**.
+5. Enter the full 40-character SHA currently at `origin/main`.
+6. Review the deployment output, Worker version ID, and route smoke checks.
+
+Pushing alone does not deploy production. The workflow is triggered only by `workflow_dispatch`, verifies that the selected SHA exactly matches current `origin/main`, and uses the GitHub Environment named `production`.
+
+Configure these values as secrets on the `production` GitHub Environment:
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_WORKER_NAME
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+PRODUCTION_URL
 ```
 
-The command builds the OpenNext bundle and deploys it to the Worker named in your local `wrangler.jsonc`. Deployment consumes your Cloudflare quota. No shared quota or Worker is provided.
+Use a Cloudflare API token restricted to deploying Workers in the intended account. The Supabase values must be the browser-safe project URL and publishable key; never configure a secret key, service-role key, JWT secret, or database password.
+
+The GitHub-hosted runner installs the locked dependencies, runs the credential scan, generates ignored `wrangler.jsonc` from `wrangler.example.jsonc`, executes the existing `pnpm deploy` command, and checks `/`, `/login`, `/manifest.webmanifest`, and `/sw.js`. The temporary Wrangler file and build output are discarded with the runner. No WSL or local Linux checkout is required.
+
+For an independent self-hosted deployment outside this repository's maintained workflow, `pnpm deploy` remains the underlying command. It builds the OpenNext bundle and deploys to the Worker named in the operator's ignored local `wrangler.jsonc`.
 
 Never commit `wrangler.jsonc`, `.env.local`, `.open-next`, `.next`, Wrangler state, or deployment logs. Release source only; do not upload a Worker bundle or other build output as a GitHub Release asset.
 
@@ -271,7 +293,7 @@ Solution:
 
 - Run `pnpm install --frozen-lockfile`.
 - Re-run `pnpm lint`, `pnpm typecheck`, then `pnpm build`.
-- For preview/deploy issues on Windows, use WSL or Linux CI when native environment limitations appear.
+- Use the manual **Deploy Production** GitHub Actions workflow so OpenNext runs on a GitHub-hosted Linux runner; local WSL is not required.
 
 ### Cloudflare deployment failures
 

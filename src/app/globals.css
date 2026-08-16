@@ -494,6 +494,53 @@ button, a, input, select { min-height: var(--touch); }
 .fc .fc-dayGridMonth-view .fc-daygrid-day-frame { min-height: 104px; }
 .fc .fc-dayGridMonth-view .fc-daygrid-day-top { padding: .35rem .45rem .2rem; }
 .fc .fc-more-link { display: inline-flex; min-height: 28px; align-items: center; padding-inline: 4px; font-weight: 650; }
+.calendar-day-sheet-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(23 33 29 / .35);
+  isolation: isolate;
+  pointer-events: auto;
+}
+.calendar-day-sheet {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 72dvh;
+  padding: .5rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow: hidden;
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: var(--surface);
+  box-shadow: 0 -16px 40px rgb(23 33 29 / .18);
+  animation: calendar-sheet-enter 180ms ease-out;
+  touch-action: pan-y;
+}
+.calendar-day-sheet-handle {
+  width: 2.5rem;
+  height: .25rem;
+  margin: 0 auto .75rem;
+  border-radius: 999px;
+  background: var(--border);
+}
+.calendar-day-sheet h2 { font-size: 1.125rem; font-weight: 700; letter-spacing: -.01em; }
+.calendar-day-sheet-list { margin-top: .625rem; max-height: calc(72dvh - 5.5rem); overflow-y: auto; overscroll-behavior: contain; }
+.calendar-day-sheet-event {
+  display: grid;
+  width: 100%;
+  min-height: 48px;
+  grid-template-columns: 8px minmax(7rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: .625rem;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.calendar-day-sheet-event:first-child { border-top: 0; }
+.calendar-day-sheet-dot { width: 8px; height: 8px; border-radius: 999px; }
+.calendar-day-sheet-time { color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.calendar-day-sheet-event-title { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes calendar-sheet-enter { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .fc .appointment-cancelled { opacity: .65; text-decoration: line-through; }
 .fc .fc-event[data-time-state="past"] { opacity: .72; }
 .fc .fc-event[data-time-state="current"] {
@@ -549,10 +596,9 @@ button, a, input, select { min-height: var(--touch); }
     margin-bottom: 1px;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-bottom {
-    position: absolute;
-    top: -1.375rem;
-    left: 2px;
-    margin: 0;
+    position: static;
+    min-height: 18px;
+    margin: 0 2px 1px;
   }
   .pouragenda-calendar .fc .fc-more-link {
     position: relative;
@@ -634,5 +680,6 @@ button, a, input, select { min-height: var(--touch); }
   .mobile-undo-offset { bottom: 1.25rem; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .calendar-day-sheet { animation: none; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

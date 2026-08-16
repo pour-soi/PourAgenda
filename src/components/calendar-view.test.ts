@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calendarWallTimeToInstant, preferredCalendarScrollTime, responsiveCalendarView } from "./calendar-view";
+import { calendarEventsForDate, calendarWallTimeToInstant, dayEventTimeLabel, preferredCalendarScrollTime, responsiveCalendarView } from "./calendar-view";
+import type { CalendarEvent } from "@/lib/calendar-events";
 import { allDayCalendarRange, allDayStorageRange } from "@/lib/appointments";
 
 describe("responsive calendar view selection", () => {
@@ -58,5 +59,45 @@ describe("active-timezone calendar movement", () => {
     expect(allDayCalendarRange(allDayStorageRange("2026-08-02", "2026-08-04"))).toEqual({
       start: "2026-08-02", end: "2026-08-05",
     });
+  });
+});
+
+const sheetEvent = (id: string, start: string, end: string, allDay = false): CalendarEvent => ({
+  id,
+  title: id,
+  start,
+  end,
+  allDay,
+  backgroundColor: "#375f52",
+  borderColor: "#375f52",
+  textColor: "#ffffff",
+  classNames: [],
+  extendedProps: { category: "Focus", categoryColor: "#375f52", recurring: false },
+});
+
+describe("mobile Month day events", () => {
+  it("sorts all-day appointments before chronological timed appointments", () => {
+    const events = calendarEventsForDate([
+      sheetEvent("late", "2026-08-18T20:00:00.000Z", "2026-08-18T21:00:00.000Z"),
+      sheetEvent("all-day", "2026-08-18", "2026-08-19", true),
+      sheetEvent("early", "2026-08-18T16:10:00.000Z", "2026-08-18T16:40:00.000Z"),
+    ], "2026-08-18", "America/Los_Angeles");
+
+    expect(events.map((event) => event.id)).toEqual(["all-day", "early", "late"]);
+  });
+
+  it("includes cross-midnight appointments on both local calendar dates", () => {
+    const crossing = sheetEvent("crossing", "2026-08-19T06:00:00.000Z", "2026-08-19T08:00:00.000Z");
+    expect(calendarEventsForDate([crossing], "2026-08-18", "America/Los_Angeles")).toHaveLength(1);
+    expect(calendarEventsForDate([crossing], "2026-08-19", "America/Los_Angeles")).toHaveLength(1);
+    expect(dayEventTimeLabel(crossing, "America/Los_Angeles", "24h")).toBe("23:00–01:00 (+1 day)");
+  });
+
+  it("uses an all-day label instead of midnight times", () => {
+    expect(dayEventTimeLabel(
+      sheetEvent("all-day", "2026-08-18", "2026-08-19", true),
+      "America/Los_Angeles",
+      "24h",
+    )).toBe("All day");
   });
 });
