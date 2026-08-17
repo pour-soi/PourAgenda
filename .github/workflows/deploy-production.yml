@@ -140,7 +140,7 @@ jobs:
           const required = [
             /enable row level security/i,
             /push_subscriptions/i,
-            /personal_appointment_push_deliveries/i,
+            /push_reminder_deliveries/i,
             /unique/i,
           ];
           for (const pattern of required) {
