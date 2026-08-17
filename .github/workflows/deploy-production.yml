@@ -77,7 +77,7 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const source = fs.readFileSync('wrangler.example.jsonc', 'utf8');
-          const output = source.replace('YOUR_WORKER_NAME', 'pouragenda-build-validation');
+          const output = source.replace('your-pouragenda-worker', 'pouragenda-build-validation');
           if (output === source) throw new Error('Worker-name placeholder was not found');
           if (!output.includes('"main": "custom-worker.ts"')) throw new Error('custom-worker.ts is not configured');
           if (!output.includes('"crons": ["*/5 * * * *"]')) throw new Error('Expected Cron configuration is missing');
