@@ -110,7 +110,7 @@ jobs:
           }
 
           const source = fs.readFileSync('custom-worker.ts', 'utf8');
-          if (!/fetch\s*\(/.test(source)) throw new Error('Custom Worker fetch handler is missing');
+          if (!/fetch\s*:\s*handler\.fetch/.test(source)) throw new Error('Custom Worker fetch delegation is missing');
           if (!/scheduled\s*\(/.test(source)) throw new Error('Custom Worker scheduled handler is missing');
 
           const workerFiles = filesUnder('.validation-worker').filter((file) => /\.(?:js|mjs)$/.test(file));
