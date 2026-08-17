@@ -77,4 +77,22 @@ describe("calendar event category colors", () => {
     expect(rerendered[0]).not.toBe(first[0]);
     expect(rerendered[1]).not.toBe(first[1]);
   });
+
+  it("preserves canonical date ownership for timed, all-day, recurring, moved, and cross-midnight events", () => {
+    const rows: AppointmentOccurrence[] = [
+      { ...occurrence("timed", "focus"), starts_at: "2026-08-18T16:10:00.000Z", ends_at: "2026-08-18T16:40:00.000Z" },
+      { ...occurrence("all-day", "focus"), all_day: true, starts_at: "2026-08-18T00:00:00.000Z", ends_at: "2026-08-19T00:00:00.000Z", intended_local_start: "2026-08-18", intended_local_end: "2026-08-18" },
+      { ...occurrence("recurring", "focus"), series_parent_id: "series", is_generated_occurrence: true, original_occurrence_start: "2026-08-25T16:10:00.000Z", starts_at: "2026-08-25T16:10:00.000Z", ends_at: "2026-08-25T16:40:00.000Z" },
+      { ...occurrence("moved", "focus"), series_parent_id: "series", original_occurrence_start: "2026-09-01T16:10:00.000Z", starts_at: "2026-09-02T17:30:00.000Z", ends_at: "2026-09-02T18:00:00.000Z" },
+      { ...occurrence("cross-midnight", "focus"), starts_at: "2026-08-19T06:30:00.000Z", ends_at: "2026-08-19T08:30:00.000Z" },
+    ];
+
+    expect(buildCalendarEvents(rows, categories).map(({ id, start, end }) => [id, start, end])).toEqual([
+      ["timed", "2026-08-18T16:10:00.000Z", "2026-08-18T16:40:00.000Z"],
+      ["all-day", "2026-08-18", "2026-08-19"],
+      ["recurring", "2026-08-25T16:10:00.000Z", "2026-08-25T16:40:00.000Z"],
+      ["moved", "2026-09-02T17:30:00.000Z", "2026-09-02T18:00:00.000Z"],
+      ["cross-midnight", "2026-08-19T06:30:00.000Z", "2026-08-19T08:30:00.000Z"],
+    ]);
+  });
 });

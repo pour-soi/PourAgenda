@@ -9,6 +9,7 @@ export type CalendarEvent = {
   start: string;
   end: string;
   allDay: boolean;
+  display?: "block";
   backgroundColor: string;
   borderColor: string;
   textColor: string;
@@ -44,6 +45,7 @@ export function buildCalendarEvents(
       start: allDayRange?.start ?? appointment.starts_at,
       end: allDayRange?.end ?? appointment.ends_at,
       allDay: appointment.all_day,
+      display: "block",
       backgroundColor: color,
       borderColor: color,
       textColor: contrastingText(color),

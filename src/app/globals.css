@@ -470,11 +470,6 @@ button, a, input, select { min-height: var(--touch); }
 }
 .fc .fc-button-primary { background: var(--primary); border-color: var(--primary); }
 .fc .fc-event { border: 0; min-height: 28px; padding: 4px 6px; }
-.fc .fc-event[data-appointment-id] {
-  border-color: var(--category-color) !important;
-  background: var(--category-color) !important;
-  color: var(--category-text-color) !important;
-}
 .fc .fc-event[data-appointment-id] .fc-event-main { color: inherit; }
 .fc .fc-list-event[data-appointment-id] {
   background: color-mix(in srgb, var(--category-color) 18%, var(--surface)) !important;
@@ -590,7 +585,7 @@ button, a, input, select { min-height: var(--touch); }
     display: grid;
     position: relative;
     grid-template-rows: 28px minmax(26px, 1fr);
-    min-height: clamp(54px, 15.3vw, 65px);
+    min-height: clamp(58px, 16.2vw, 69px);
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-top {
     display: block;
@@ -644,7 +639,7 @@ button, a, input, select { min-height: var(--touch); }
   }
   .pouragenda-calendar .fc .mobile-month-date-number {
     position: absolute;
-    top: 8px;
+    top: 4px;
     right: 8px;
     grid-column: 2;
     min-width: 0;
@@ -724,13 +719,19 @@ button, a, input, select { min-height: var(--touch); }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .calendar-card { padding-inline: 8px; }
 }
 @media (max-width: 339px) {
   .calendar-toolbar-title { font-size: 1.375rem; letter-spacing: -.02em; }
 }
 @media (min-width: 600px) {
   .calendar-card { padding: 1.125rem; }
-  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-frame { height: 118px; }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-frame {
+    height: auto;
+    min-height: 145px;
+    max-height: 155px;
+    aspect-ratio: 1 / 1;
+  }
   .mobile-page-title { font-size: 1.5rem; }
   .day-insight-group { grid-template-columns: minmax(0, 1.4fr) minmax(14rem, .8fr); }
 }

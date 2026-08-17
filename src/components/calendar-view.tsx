@@ -505,7 +505,7 @@ export default function CalendarView({
               recurring={arg.event.extendedProps.recurring}
             />
           )}
-          dayMaxEvents={isMobile ? 1 : 4}
+          dayMaxEvents={isMobile ? 1 : 3}
           moreLinkContent={(arg) => isMobile ? "" : `+${arg.num}`}
           moreLinkClick={() => {
             if (isMobile && currentView === "dayGridMonth") return;
