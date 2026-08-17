@@ -191,6 +191,7 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   if (testInfo.project.name === "desktop") await page.setViewportSize({ width: 390, height: 844 });
   const state = createCalendarMockState();
   state.appointments.push(
+    previewAppointment("preview-single", "Single appointment", "focus", "2026-07-28T16:00:00.000Z", "2026-07-28T17:00:00.000Z"),
     previewAppointment("preview-all-day", "Conference day", "planning", "2026-07-29T00:00:00.000Z", "2026-07-29T23:59:59.000Z", true),
     previewAppointment("preview-crossing", "Late support", "focus", "2026-07-29T23:00:00.000Z", "2026-07-30T01:00:00.000Z"),
     ...Array.from({ length: 10 }, (_, index) => previewAppointment(
@@ -207,21 +208,30 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
   const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
   const neighborCell = page.locator('.fc-daygrid-day[data-date="2026-07-30"]');
+  const singleEventCell = page.locator('.fc-daygrid-day[data-date="2026-07-28"]');
   const count = targetCell.locator(".mobile-month-event-count");
   const dateNumber = targetCell.locator(".mobile-month-date-number");
   await expect(count).toHaveText(String(state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length));
+  await expect(count).toHaveCSS("background-color", "rgb(180, 83, 42)");
+  await expect(count).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(count).toHaveCSS("border-radius", "9999px");
+  await expect(singleEventCell.locator(".mobile-month-event-count")).toHaveCount(0);
   await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
   await expect(targetCell).not.toContainText(/\+\d+/);
 
   const frameBounds = (await targetCell.locator(".fc-daygrid-day-frame").boundingBox())!;
   const countBounds = (await count.boundingBox())!;
   const dateBounds = (await dateNumber.boundingBox())!;
+  expect(countBounds.width).toBe(20);
+  expect(countBounds.height).toBe(20);
+  expect(countBounds.x - frameBounds.x).toBeLessThan(8);
   expect(countBounds.x).toBeLessThan(dateBounds.x);
   expect(dateBounds.x + dateBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
 
   const targetEventBounds = (await targetCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
   const neighborEventBounds = (await neighborCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
   expect(Math.abs(targetEventBounds.y - neighborEventBounds.y)).toBeLessThan(1);
+  expect(Math.abs((targetEventBounds.x + targetEventBounds.width / 2) - (frameBounds.x + frameBounds.width / 2))).toBeLessThan(1);
   expect(targetEventBounds.height).toBeGreaterThanOrEqual(25);
   expect(targetEventBounds.x).toBeGreaterThanOrEqual(frameBounds.x);
   expect(targetEventBounds.x + targetEventBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
@@ -261,8 +271,17 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   await sheet.dispatchEvent("touchend", { changedTouches: [{ identifier: 1, clientX: 100, clientY: 180 }] });
   await expect(sheet).toBeHidden();
 
-  await page.locator('.fc-daygrid-day[data-date="2026-07-28"] .fc-daygrid-day-top').click();
-  await expect(page.getByRole("dialog", { name: /Tuesday, July 28/ })).toHaveCount(0);
+  await expect(singleEventCell.locator('[data-appointment-id="preview-single"]:visible')).toHaveCount(1);
+  await singleEventCell.locator(".mobile-month-day-header").click({ position: { x: 4, y: 20 } });
+  const singleEventSheet = page.getByRole("dialog", { name: "Tuesday, July 28" });
+  await expect(singleEventSheet).toBeVisible();
+  await expect(singleEventSheet.getByRole("button")).toHaveCount(1);
+  await expect(page.locator(".fc-popover:visible")).toHaveCount(0);
+  await page.locator(".calendar-day-sheet-backdrop").click({ position: { x: 5, y: 5 } });
+  await expect(singleEventSheet).toBeHidden();
+
+  await page.locator('.fc-daygrid-day[data-date="2026-07-27"] .fc-daygrid-day-top').click();
+  await expect(page.getByRole("dialog", { name: /Monday, July 27/ })).toHaveCount(0);
 });
 
 test("FullCalendar refreshes custom category styles without affecting other appointments", async ({ page }, testInfo) => {

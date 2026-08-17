@@ -307,8 +307,15 @@ export default function CalendarView({
     const openFromCount = (trigger: HTMLElement) => openDaySheet(dateKey, trigger);
 
     return (
-      <span className="mobile-month-day-header">
-        {eventCount > 0 && (
+      <span
+        className="mobile-month-day-header"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openDaySheet(dateKey, event.currentTarget);
+        }}
+      >
+        {eventCount > 1 && (
           <span
             role="button"
             tabIndex={0}
