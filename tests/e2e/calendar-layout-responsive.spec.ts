@@ -50,10 +50,19 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
       const frame = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
       expect(frame!.height).toBeGreaterThanOrEqual(54);
       expect(frame!.height, `${viewport.width}px month cell height`).toBeLessThanOrEqual(viewport.width < 390 ? 60 : 65);
-      await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("2");
+      await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("+2");
       await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
-      await expect(targetCell).not.toContainText(/\+\d+/);
       expect(await targetCell.locator('[data-appointment-id]:visible').count()).toBe(1);
+    } else {
+      const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
+      const frame = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
+      expect(frame!.height).toBeGreaterThanOrEqual(118);
+      expect(frame!.height).toBeLessThanOrEqual(119);
+      await expect(targetCell.locator(".fc-daygrid-day-frame")).toHaveCSS("height", "118px");
+      await expect(targetCell.locator(".fc-daygrid-day-frame")).toHaveCSS("min-height", "118px");
+      const date = (await targetCell.locator(".fc-daygrid-day-number").boundingBox())!;
+      expect(frame!.x + frame!.width - (date.x + date.width)).toBeGreaterThanOrEqual(7);
+      expect(date.y - frame!.y).toBeGreaterThanOrEqual(7);
     }
 
     await page.getByRole("button", { name: "Week", exact: true }).click();
@@ -98,6 +107,60 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
       expect(clearance).toBeGreaterThanOrEqual(navigationHeight);
     }
   }
+});
+
+test("desktop Month stacks events and uses a hidden-count popover", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop Chromium coverage only.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const state = createCalendarMockState();
+  state.appointments.push(...Array.from({ length: 8 }, (_, index) => previewAppointment(
+    `desktop-overflow-${index}`,
+    `Desktop appointment ${index + 1}`,
+    index % 2 ? "personal" : "planning",
+    `2026-07-29T${(12 + index).toString().padStart(2, "0")}:00:00.000Z`,
+    `2026-07-29T${(12 + index).toString().padStart(2, "0")}:30:00.000Z`,
+  )));
+  await openCalendarLayoutPreview(page, state);
+
+  const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
+  const frame = (await targetCell.locator(".fc-daygrid-day-frame").boundingBox())!;
+  expect(frame.height).toBeGreaterThanOrEqual(118);
+  expect(frame.height).toBeLessThanOrEqual(119);
+  await expect(targetCell.locator(".fc-daygrid-day-frame")).toHaveCSS("height", "118px");
+  await expect(targetCell.locator(".fc-daygrid-day-frame")).toHaveCSS("min-height", "118px");
+
+  const totalEvents = state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length;
+  const visibleEvents = targetCell.locator(".fc-daygrid-event:visible");
+  const visibleCount = await visibleEvents.count();
+  expect(visibleCount).toBeGreaterThan(1);
+  expect(visibleCount).toBeLessThan(totalEvents);
+  const eventBounds = await visibleEvents.evaluateAll((elements) => elements.map((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { bottom: bounds.bottom, top: bounds.top };
+  }));
+  for (let index = 1; index < eventBounds.length; index += 1) {
+    expect(eventBounds[index].top).toBeGreaterThanOrEqual(eventBounds[index - 1].bottom);
+  }
+
+  const moreLink = targetCell.locator(".fc-more-link:visible");
+  await expect(moreLink).toHaveText(`+${totalEvents - visibleCount}`);
+  await expect(moreLink).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(moreLink).toHaveCSS("border-top-style", "none");
+  await expect(moreLink).toHaveCSS("box-shadow", "none");
+  await expect(moreLink).toHaveCSS("color", "rgb(123, 132, 127)");
+
+  const firstVisibleEvent = visibleEvents.first();
+  expect(await firstVisibleEvent.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBeTruthy();
+  await firstVisibleEvent.click();
+  await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+
+  await moreLink.click();
+  const popover = page.locator(".fc-popover:visible");
+  await expect(popover).toHaveCount(1);
+  await expect(popover.locator(".fc-daygrid-event")).toHaveCount(totalEvents);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test("mobile Week maps between one and seven days on rotation without changing the selected tab", async ({ page }, testInfo) => {
@@ -216,18 +279,13 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   const singleEventCell = page.locator('.fc-daygrid-day[data-date="2026-07-28"]');
   const count = targetCell.locator(".mobile-month-event-count");
   const dateNumber = targetCell.locator(".mobile-month-date-number");
-  await expect(count).toHaveText(String(state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length));
-  await expect(count).toHaveCSS("background-color", "rgb(255, 255, 255)");
-  await expect(count).toHaveCSS("border-top-style", "solid");
-  await expect(count).toHaveCSS("border-top-color", "rgb(180, 83, 42)");
-  const borderWidth = await count.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
-  expect(borderWidth).toBeGreaterThanOrEqual(1);
-  expect(borderWidth).toBeLessThanOrEqual(1.5);
-  await expect(count).toHaveCSS("color", "rgb(180, 83, 42)");
-  await expect(count).toHaveCSS("border-radius", "9999px");
+  await expect(count).toHaveText(`+${state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length}`);
+  await expect(count).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(count).toHaveCSS("border-top-style", "none");
+  await expect(count).toHaveCSS("color", "rgb(123, 132, 127)");
+  await expect(count).toHaveCSS("border-radius", "0px");
   await expect(singleEventCell.locator(".mobile-month-event-count")).toHaveCount(0);
   await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
-  await expect(targetCell).not.toContainText(/\+\d+/);
 
   const frameBounds = (await targetCell.locator(".fc-daygrid-day-frame").boundingBox())!;
   const countBounds = (await count.boundingBox())!;
@@ -240,10 +298,24 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   expect(countBounds.x - frameBounds.x).toBeLessThanOrEqual(10);
   expect(countBounds.y - frameBounds.y).toBeGreaterThanOrEqual(8);
   expect(countBounds.y - frameBounds.y).toBeLessThanOrEqual(10);
-  await expect(count).toHaveCSS("font-size", "10px");
+  await expect(count).toHaveCSS("font-size", "11px");
+  await expect(count).toHaveCSS("font-weight", "600");
   await expect(count).toHaveCSS("box-shadow", "none");
+  await expect(dateNumber).toHaveCSS("top", "8px");
+  await expect(dateNumber).toHaveCSS("right", "8px");
   expect(countBounds.x).toBeLessThan(dateBounds.x);
-  expect(dateBounds.x + dateBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
+  expect(frameBounds.x + frameBounds.width - (dateBounds.x + dateBounds.width)).toBeGreaterThanOrEqual(8);
+  expect(frameBounds.x + frameBounds.width - (dateBounds.x + dateBounds.width)).toBeLessThanOrEqual(10);
+  expect(dateBounds.y - frameBounds.y).toBeGreaterThanOrEqual(8);
+  expect(dateBounds.y - frameBounds.y).toBeLessThanOrEqual(10);
+
+  const frameSizeBeforeToday = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
+  await targetCell.evaluate((element) => element.classList.add("fc-day-today"));
+  const todayFrame = targetCell.locator(".fc-daygrid-day-frame");
+  await expect(todayFrame).toHaveCSS("border-radius", "6px");
+  await expect(todayFrame).toHaveCSS("box-shadow", "rgb(55, 95, 82) 0px 0px 0px 1.5px inset");
+  const frameSizeAfterToday = await todayFrame.boundingBox();
+  expect(frameSizeAfterToday).toEqual(frameSizeBeforeToday);
 
   const targetEventBounds = (await targetCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
   const neighborEventBounds = (await neighborCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;

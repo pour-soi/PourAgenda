@@ -333,7 +333,7 @@ export default function CalendarView({
               openFromCount(event.currentTarget);
             }}
           >
-            {eventCount}
+            +{eventCount}
           </span>
         )}
         <span className="mobile-month-date-number">{arg.dayNumberText}</span>
@@ -505,7 +505,7 @@ export default function CalendarView({
               recurring={arg.event.extendedProps.recurring}
             />
           )}
-          dayMaxEvents={isMobile ? 1 : true}
+          dayMaxEvents={isMobile ? 1 : 4}
           moreLinkContent={(arg) => isMobile ? "" : `+${arg.num}`}
           moreLinkClick={() => {
             if (isMobile && currentView === "dayGridMonth") return;
