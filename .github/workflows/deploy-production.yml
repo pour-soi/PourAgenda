@@ -7,6 +7,14 @@ on:
         description: Full commit SHA from origin/main to deploy
         required: true
         type: string
+      mode:
+        description: Validation builds do not deploy or access production secrets
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - build-only
 
 permissions:
   contents: read
@@ -16,7 +24,136 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-custom-worker:
+    if: inputs.mode == 'build-only'
+    name: Validate custom Worker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out selected snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Verify selected snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Scan tracked source for credentials
+        run: pnpm run scan:credentials
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Run notification infrastructure tests
+        run: >-
+          pnpm exec vitest run
+          src/lib/personal-appointment-reminders.test.ts
+          src/lib/push-dispatch.test.ts
+          src/lib/service-worker-push.test.ts
+
+      - name: Generate build-only Wrangler configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('wrangler.example.jsonc', 'utf8');
+          const output = source.replace('YOUR_WORKER_NAME', 'pouragenda-build-validation');
+          if (output === source) throw new Error('Worker-name placeholder was not found');
+          if (!output.includes('"main": "custom-worker.ts"')) throw new Error('custom-worker.ts is not configured');
+          if (!output.includes('"crons": ["*/5 * * * *"]')) throw new Error('Expected Cron configuration is missing');
+          fs.writeFileSync('wrangler.jsonc', output, { mode: 0o600 });
+          NODE
+
+      - name: Build OpenNext Worker
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic_publishable_build_only
+        run: pnpm exec opennextjs-cloudflare build
+
+      - name: Bundle custom Worker without deploying
+        run: pnpm exec wrangler deploy --dry-run --outdir .validation-worker
+
+      - name: Verify Worker entry points and client isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          function filesUnder(root) {
+            if (!fs.existsSync(root)) return [];
+            return fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+              const target = path.join(root, entry.name);
+              return entry.isDirectory() ? filesUnder(target) : [target];
+            });
+          }
+
+          const source = fs.readFileSync('custom-worker.ts', 'utf8');
+          if (!/fetch\s*\(/.test(source)) throw new Error('Custom Worker fetch handler is missing');
+          if (!/scheduled\s*\(/.test(source)) throw new Error('Custom Worker scheduled handler is missing');
+
+          const workerFiles = filesUnder('.validation-worker').filter((file) => /\.(?:js|mjs)$/.test(file));
+          const workerBundle = workerFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+          if (!workerBundle) throw new Error('Wrangler did not produce a Worker bundle');
+          if (!workerBundle.includes('scheduled')) throw new Error('Bundled scheduled handler was not found');
+          if (!workerBundle.includes('fetch')) throw new Error('Bundled fetch handler was not found');
+
+          const clientFiles = [
+            ...filesUnder('.next/static'),
+            ...filesUnder('.open-next/assets/_next/static'),
+          ].filter((file) => /\.(?:js|mjs|css|html|json|map)$/.test(file));
+          const forbidden = ['SUPABASE_SERVICE_ROLE_KEY', 'VAPID_PRIVATE_KEY'];
+          for (const file of clientFiles) {
+            const content = fs.readFileSync(file, 'utf8');
+            for (const name of forbidden) {
+              if (content.includes(name)) throw new Error(`${name} leaked into client output: ${file}`);
+            }
+          }
+          NODE
+
+      - name: Validate migration safety structure
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const sql = fs.readFileSync('supabase/migrations/202608170001_personal_appointment_push.sql', 'utf8');
+          const required = [
+            /enable row level security/i,
+            /push_subscriptions/i,
+            /personal_appointment_push_deliveries/i,
+            /unique/i,
+          ];
+          for (const pattern of required) {
+            if (!pattern.test(sql)) throw new Error(`Migration structure missing ${pattern}`);
+          }
+          NODE
+
+      - name: Remove temporary validation files
+        if: always()
+        run: rm -rf wrangler.jsonc .validation-worker
+
   deploy:
+    if: inputs.mode != 'build-only'
     name: Deploy approved commit
     runs-on: ubuntu-latest
     environment: production

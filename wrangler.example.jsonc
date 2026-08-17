@@ -4,12 +4,15 @@
   "name": "your-pouragenda-worker",
   "workers_dev": true,
   "preview_urls": false,
-  "main": ".open-next/worker.js",
+  "main": "custom-worker.ts",
   "compatibility_date": "2026-07-28",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
   },
   "observability": {
     "enabled": false

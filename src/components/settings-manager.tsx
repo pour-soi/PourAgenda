@@ -39,6 +39,11 @@ const timezoneLabel = (value: string) => {
   const match = TIMEZONES.find(([, zone]) => zone === value);
   return match ? `${match[0]} (${match[1]})` : value.replaceAll("_", " ") + ` (${value})`;
 };
+const applicationServerKey = (value: string) => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), (character) => character.charCodeAt(0));
+  return bytes;
+};
 
 export function SettingsManager({
   userId,
@@ -63,6 +68,11 @@ export function SettingsManager({
   const [categories, setCategories] = useState(initialCategories);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [pushState, setPushState] = useState<"unsupported" | "default" | "blocked" | "enabled">(() => {
+    if (typeof window === "undefined") return "default";
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
+    return Notification.permission === "denied" ? "blocked" : "default";
+  });
   const [categoryReplacement, setCategoryReplacement] = useState<CategoryReplacement | null>(null);
   const moveDeleteInProgress = useRef(false);
   const persistedCategories = useRef(new Map(initialCategories.map((category) => [category.id, category])));
@@ -81,6 +91,45 @@ export function SettingsManager({
       window.removeEventListener("focus", detect);
     };
   }, []);
+  useEffect(() => {
+    if (pushState !== "unsupported" && Notification.permission === "granted") {
+      void navigator.serviceWorker.ready.then((registration) => registration.pushManager.getSubscription())
+        .then((subscription) => setPushState(subscription ? "enabled" : "default"));
+    }
+  }, [pushState]);
+
+  async function enablePersonalAppointmentPush() {
+    if (pushState === "unsupported") return setMessage("This browser does not support Web Push.");
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      setPushState(permission === "denied" ? "blocked" : "default");
+      setMessage(permission === "denied" ? "Notifications are blocked in browser settings." : "Notification permission was not granted.");
+      return;
+    }
+    setPending(true); setMessage("");
+    try {
+      const response = await fetch("/api/push/vapid-key", { cache: "no-store" });
+      if (!response.ok) throw new Error("Push is not configured.");
+      const { publicKey } = await response.json() as { publicKey: string };
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey(publicKey),
+      });
+      const json = subscription.toJSON();
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("The browser returned an incomplete push subscription.");
+      const result = await supabase.from("push_subscriptions").upsert({
+        user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth, disabled_at: null,
+      }, { onConflict: "user_id,endpoint" });
+      if (result.error) throw result.error;
+      setPushState("enabled");
+      setMessage("Personal appointment notifications enabled.");
+    } catch {
+      setMessage("Personal appointment notifications could not be enabled.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function exportData(kind: "appointments" | "contacts" | "settings") {
     setPending(true); setMessage("");
@@ -348,7 +397,14 @@ export function SettingsManager({
           <legend className="px-1 font-semibold">Default reminders</legend>
           <p className="mb-3 text-sm text-muted">Best effort while PourAgenda is open. iPhone notifications require an installed PWA and are not guaranteed in the background.</p>
           <div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option) => <label key={option.value} className="flex items-center gap-2"><input type="checkbox" checked={settings.default_reminder_minutes.includes(option.value)} onChange={(event) => setSettings({...settings,default_reminder_minutes:normalizeReminderMinutes(event.target.checked ? [...settings.default_reminder_minutes,option.value] : settings.default_reminder_minutes.filter((value)=>value!==option.value))})}/>{option.label}</label>)}</div>
-          <button type="button" onClick={async()=>{if(!("Notification" in window))return setMessage("This browser does not support notifications.");const permission=await Notification.requestPermission();setMessage(permission==="granted"?"Browser notifications enabled. Delivery remains best effort.":`Notification permission is ${permission}.`);}} className="mt-4 rounded-lg border border-border px-3">Enable browser notifications</button>
+        </fieldset>
+        <fieldset className="rounded-lg border border-border p-4">
+          <legend className="px-1 font-semibold">Personal appointment reminders</legend>
+          <p className="mb-3 text-sm text-muted">Installed PWAs can receive reminders at noon, 5 PM, and 9 PM on each of the three days before appointments in the Personal Appointment category.</p>
+          <button type="button" disabled={pending || pushState === "blocked" || pushState === "unsupported" || pushState === "enabled"}
+            onClick={() => void enablePersonalAppointmentPush()} className="rounded-lg border border-border px-3">
+            {pushState === "enabled" ? "Notifications enabled" : pushState === "blocked" ? "Notifications blocked" : pushState === "unsupported" ? "Notifications unavailable" : "Enable notifications"}
+          </button>
         </fieldset>
         <button disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 font-semibold text-white disabled:opacity-60"><Save size={18} />{pending ? "Saving…" : "Save settings"}</button>
       </form>

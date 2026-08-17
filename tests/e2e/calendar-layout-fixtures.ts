@@ -100,10 +100,10 @@ export async function installCalendarLayoutMocks(page: Page, state: CalendarMock
   }));
 }
 
-export async function openCalendarLayoutPreview(page: Page, state = createCalendarMockState()) {
+export async function openCalendarLayoutPreview(page: Page, state = createCalendarMockState(), query = "") {
   await page.clock.setFixedTime(new Date("2026-07-29T18:00:00.000Z"));
   await installCalendarLayoutMocks(page, state);
-  await page.goto("/privacy/layout-preview");
+  await page.goto(`/privacy/layout-preview${query}`);
   await page.getByRole("heading", { name: "Your calendar" }).waitFor();
   await page.locator(".fc").waitFor();
   await page.evaluate((date) => window.__pourAgendaCalendar?.gotoDate(date), previewDate);

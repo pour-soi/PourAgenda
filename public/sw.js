@@ -40,3 +40,29 @@ self.addEventListener("fetch", (event) => {
     })),
   );
 });
+
+self.addEventListener("push", (event) => {
+  const payload = event.data?.json() ?? {};
+  event.waitUntil(self.registration.showNotification(payload.title ?? "PourAgenda reminder", {
+    body: payload.body ?? "You have an upcoming appointment.",
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    data: { appointmentId: payload.appointmentId, date: payload.date },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data ?? {};
+  const target = data.appointmentId
+    ? `/?appointment=${encodeURIComponent(data.appointmentId)}&date=${encodeURIComponent(data.date ?? "")}`
+    : "/";
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+    const existing = clients.find((client) => "focus" in client);
+    if (existing) {
+      existing.navigate(target);
+      return existing.focus();
+    }
+    return self.clients.openWindow(target);
+  }));
+});
