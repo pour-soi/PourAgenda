@@ -4,13 +4,12 @@ import { createLiveAppointment, liveClient, loginPage } from "./live-fixtures";
 test.use({ trace: "off" });
 test.setTimeout(90_000);
 
-async function openOccurrence(page: Page, parentId: string, occurrenceOnly: boolean) {
+async function openOccurrence(page: Page, parentId: string) {
   await page.getByRole("button", { name: "Week", exact: true }).click();
   const occurrence = page.locator(`[data-appointment-id^="${parentId}:"]`).first();
   await expect(occurrence).toBeVisible();
-  page.once("dialog", (dialog) => occurrenceOnly ? dialog.accept() : dialog.dismiss());
   await occurrence.click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
 }
 
 test("two independent contexts reject stale entire-series and occurrence edits", async ({ browser }, testInfo) => {
@@ -28,12 +27,14 @@ test("two independent contexts reject stale entire-series and occurrence edits",
   try {
     await Promise.all([loginPage(pageA), loginPage(pageB)]);
 
-    await Promise.all([openOccurrence(pageA, parent.id, false), openOccurrence(pageB, parent.id, false)]);
+    await Promise.all([openOccurrence(pageA, parent.id), openOccurrence(pageB, parent.id)]);
     await pageA.getByRole("dialog").getByLabel("Location").fill("Series change from context A");
     await pageB.getByRole("dialog").getByLabel("Location").fill("Unsaved series change from context B");
     await pageA.getByRole("dialog").getByRole("button", { name: "Save appointment" }).click();
+    await pageA.getByRole("dialog", { name: "Save recurring appointment" }).getByRole("button", { name: "Entire series" }).click();
     await expect(pageA.getByRole("dialog")).toBeHidden();
     await pageB.getByRole("dialog").getByRole("button", { name: "Save appointment" }).click();
+    await pageB.getByRole("dialog", { name: "Save recurring appointment" }).getByRole("button", { name: "Entire series" }).click();
     await expect(pageB.getByRole("dialog").getByText("This appointment was changed on another device. Reload the latest version before saving.")).toBeVisible();
     await pageB.getByRole("button", { name: "Reload latest appointment" }).click();
     await expect(pageB.getByRole("dialog").getByText("Latest version loaded. Your unsaved form values are preserved.")).toBeVisible();
@@ -42,14 +43,16 @@ test("two independent contexts reject stale entire-series and occurrence edits",
       .toBe("Series change from context A");
 
     await Promise.all([pageA.reload(), pageB.reload()]);
-    await Promise.all([openOccurrence(pageA, parent.id, true), openOccurrence(pageB, parent.id, true)]);
+    await Promise.all([openOccurrence(pageA, parent.id), openOccurrence(pageB, parent.id)]);
     const exceptionA = `${title} exception A`;
     const exceptionB = `${title} exception B`;
     await pageA.getByRole("dialog").getByLabel("Title").fill(exceptionA);
     await pageB.getByRole("dialog").getByLabel("Title").fill(exceptionB);
     await pageA.getByRole("dialog").getByRole("button", { name: "Save appointment" }).click();
+    await pageA.getByRole("dialog", { name: "Save recurring appointment" }).getByRole("button", { name: "This appointment only" }).click();
     await expect(pageA.getByRole("dialog")).toBeHidden();
     await pageB.getByRole("dialog").getByRole("button", { name: "Save appointment" }).click();
+    await pageB.getByRole("dialog", { name: "Save recurring appointment" }).getByRole("button", { name: "This appointment only" }).click();
     await expect(pageB.getByRole("dialog").getByText("This occurrence changed on another device. Reload the latest version before saving.")).toBeVisible();
     await pageB.getByRole("button", { name: "Reload latest appointment" }).click();
     await expect(pageB.getByRole("dialog").getByText("Latest version loaded. Your unsaved form values are preserved.")).toBeVisible();

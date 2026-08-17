@@ -77,7 +77,9 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<Draft>(() => blankDraft(categories[0]?.id ?? "", timezone, defaultReminders, defaultDurationMinutes));
   const [editing, setEditing] = useState<Appointment | AppointmentOccurrence | null>(null);
+  const [editingSeriesParent, setEditingSeriesParent] = useState<Appointment | null>(null);
   const [editScope, setEditScope] = useState<"single" | "series" | "occurrence">("single");
+  const [deferRecurringScope, setDeferRecurringScope] = useState(false);
   const [seriesParentId, setSeriesParentId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -114,7 +116,9 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const calendarLoadGeneration = useRef(0);
   const endOverridden = useRef(false);
   const recurringChoiceRef = useRef<HTMLDivElement>(null);
-  const [recurringEditChoice, setRecurringEditChoice] = useState<{ item: Appointment | AppointmentOccurrence; trigger: HTMLElement | null } | null>(null);
+  const initialDraft = useRef<Draft | null>(null);
+  const saveContext = useRef<{ scope: "single" | "series" | "occurrence"; editing: Appointment | AppointmentOccurrence | null; draft: Draft } | null>(null);
+  const [recurringEditChoice, setRecurringEditChoice] = useState<{ action: "save" | "delete"; item: Appointment | AppointmentOccurrence; trigger: HTMLElement | null } | null>(null);
   const updateRange = useCallback((start: Date, end: Date) => {
     setRange((current) => (
       current.start.getTime() === start.getTime() && current.end.getTime() === end.getTime()
@@ -276,36 +280,46 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
     setAllowConflict(false); setStale(false); setDraftHint(result.explanation); setMessage(""); setOpen(true);
   }
-  async function openAppointmentEditor(item: Appointment | AppointmentOccurrence, occurrenceScope: boolean) {
+  async function openAppointmentEditor(item: Appointment | AppointmentOccurrence, occurrenceScope: boolean, deferScope = false) {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
     const targetId = parentId && !occurrenceScope ? parentId : item.id;
-    const latest = parentId && occurrenceScope && "is_generated_occurrence" in item && item.is_generated_occurrence
-      ? { data: item }
-      : await supabase.from("appointments").select("*").eq("id", targetId).maybeSingle();
+    const [latest, parentResult] = await Promise.all([
+      parentId && occurrenceScope && "is_generated_occurrence" in item && item.is_generated_occurrence
+        ? Promise.resolve({ data: item })
+        : supabase.from("appointments").select("*").eq("id", targetId).maybeSingle(),
+      parentId && deferScope
+        ? supabase.from("appointments").select("*").eq("id", parentId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
     const current = (latest.data ?? item) as Appointment;
+    const parent = parentResult.data as Appointment | null;
     const shareResult = await supabase.from("appointment_shares").select("id,revoked_at,expires_at,updated_at")
       .eq("appointment_id", targetId).is("revoked_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
     setShare(shareResult.data); setShareUrl("");
     setEditScope(parentId ? (occurrenceScope ? "occurrence" : "series") : "single");
+    setDeferRecurringScope(Boolean(parentId && deferScope));
     setSeriesParentId(parentId);
+    setEditingSeriesParent(parent);
     setEditing(current);
     endOverridden.current = true;
     const allDayRange = current.all_day ? allDayEditorRange(current) : null;
-    setDraft({ title: current.title, category_id: current.category_id,
+    const nextDraft = { title: current.title, category_id: current.category_id,
       starts_at: allDayRange?.start ?? toLocalInput(current.starts_at, timezone),
       ends_at: allDayRange?.end ?? toLocalInput(current.ends_at, timezone),
       all_day: current.all_day, location: current.location ?? "",
       public_notes: current.public_notes ?? "", private_notes: current.private_notes ?? "",
-      recurrence_frequency: parentId && occurrenceScope ? "" : current.recurrence_frequency ?? "",
-      recurrence_interval: current.recurrence_interval ?? 1, recurrence_until: current.recurrence_until ?? "",
-      reminder_minutes: current.reminder_minutes ?? [] });
+      recurrence_frequency: parentId && occurrenceScope ? (deferScope ? parent?.recurrence_frequency ?? "" : "") : current.recurrence_frequency ?? "",
+      recurrence_interval: deferScope ? parent?.recurrence_interval ?? 1 : current.recurrence_interval ?? 1,
+      recurrence_until: deferScope ? parent?.recurrence_until ?? "" : current.recurrence_until ?? "",
+      reminder_minutes: current.reminder_minutes ?? [] } satisfies Draft;
+    initialDraft.current = nextDraft;
+    setDraft(nextDraft);
     setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
   }
   function startEdit(item: Appointment | AppointmentOccurrence) {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
     if (!parentId) return void openAppointmentEditor(item, false);
-    if (recurringEditChoice) return;
-    setRecurringEditChoice({ item, trigger: document.activeElement as HTMLElement | null });
+    void openAppointmentEditor(item, true, true);
   }
   const closeRecurringEditChoice = useCallback(() => {
     const trigger = recurringEditChoice?.trigger;
@@ -330,42 +344,44 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const iso = (value: string, allDay: boolean, isEnd = false) => allDay
     ? isEnd ? allDayEndToUtc(value) : allDayStartToUtc(value)
     : localInputToUtc(value, timezone);
-  async function save(event?: FormEvent, forceConflict = false) {
+  async function save(event?: FormEvent, forceConflict = false,
+    activeScope = editScope, activeEditing = editing, activeDraft = draft) {
     event?.preventDefault();
+    saveContext.current = { scope: activeScope, editing: activeEditing, draft: activeDraft };
     if (pending || !navigator.onLine) {
       if (!navigator.onLine) setMessage("Reconnect before saving this appointment.");
       return;
     }
-    const allDayRange = draft.all_day ? allDayStorageRange(draft.starts_at, draft.ends_at) : null;
-    const parsed = appointmentInput.safeParse({ ...draft, starts_at: allDayRange?.starts_at ?? iso(draft.starts_at, false),
-      ends_at: allDayRange?.ends_at ?? iso(draft.ends_at, false), timezone });
+    const allDayRange = activeDraft.all_day ? allDayStorageRange(activeDraft.starts_at, activeDraft.ends_at) : null;
+    const parsed = appointmentInput.safeParse({ ...activeDraft, starts_at: allDayRange?.starts_at ?? iso(activeDraft.starts_at, false),
+      ends_at: allDayRange?.ends_at ?? iso(activeDraft.ends_at, false), timezone });
     if (!parsed.success) return setMessage(parsed.error.issues[0]?.message ?? "Check the appointment.");
-    if (draft.recurrence_frequency && (!Number.isInteger(draft.recurrence_interval) || draft.recurrence_interval < 1 || draft.recurrence_interval > 52)) {
+    if (activeDraft.recurrence_frequency && (!Number.isInteger(activeDraft.recurrence_interval) || activeDraft.recurrence_interval < 1 || activeDraft.recurrence_interval > 52)) {
       return setMessage("Repeat interval must be between 1 and 52.");
     }
-    if (draft.recurrence_until && draft.recurrence_until < draft.starts_at.slice(0, 10)) {
+    if (activeDraft.recurrence_until && activeDraft.recurrence_until < activeDraft.starts_at.slice(0, 10)) {
       return setMessage("Repeat end date cannot be before the first occurrence.");
     }
-    if (editScope === "series" && editing
-      && (editing.recurrence_frequency !== (draft.recurrence_frequency || null)
-        || editing.recurrence_interval !== (draft.recurrence_frequency ? draft.recurrence_interval : null)
-        || editing.recurrence_until !== (draft.recurrence_until || null))
+    if (activeScope === "series" && activeEditing
+      && (activeEditing.recurrence_frequency !== (activeDraft.recurrence_frequency || null)
+        || activeEditing.recurrence_interval !== (activeDraft.recurrence_frequency ? activeDraft.recurrence_interval : null)
+        || activeEditing.recurrence_until !== (activeDraft.recurrence_until || null))
       && !window.confirm("Changing this recurrence rule may make existing exceptions unreachable. Existing exceptions will be preserved. Continue?")) return;
     setPending(true); setMessage("");
     const payload = { user_id: userId, ...parsed.data,
-      kind: editing?.kind ?? "personal", contact_id: editing?.contact_id ?? null, status: editing?.status ?? "pending",
-      reminder_minutes: normalizeReminderMinutes(draft.reminder_minutes),
-      location: parsed.data.location || null, phone: editing?.phone ?? null, email: editing?.email ?? null,
+      kind: activeEditing?.kind ?? "personal", contact_id: activeEditing?.contact_id ?? null, status: activeEditing?.status ?? "pending",
+      reminder_minutes: normalizeReminderMinutes(activeDraft.reminder_minutes),
+      location: parsed.data.location || null, phone: activeEditing?.phone ?? null, email: activeEditing?.email ?? null,
       public_notes: parsed.data.public_notes || null, private_notes: parsed.data.private_notes || null,
-      intended_local_start: allDayRange?.intended_local_start ?? draft.starts_at.replace("T", " "),
-      intended_local_end: allDayRange?.intended_local_end ?? draft.ends_at.replace("T", " "),
-      completed_at: editing?.completed_at ?? null,
-      cancelled_at: editing?.cancelled_at ?? null,
-      recurrence_frequency: editScope === "occurrence" ? null : draft.recurrence_frequency || null,
-      recurrence_interval: editScope === "occurrence" || !draft.recurrence_frequency ? null : draft.recurrence_interval,
-      recurrence_until: editScope === "occurrence" || !draft.recurrence_frequency ? null : draft.recurrence_until || null,
+      intended_local_start: allDayRange?.intended_local_start ?? activeDraft.starts_at.replace("T", " "),
+      intended_local_end: allDayRange?.intended_local_end ?? activeDraft.ends_at.replace("T", " "),
+      completed_at: activeEditing?.completed_at ?? null,
+      cancelled_at: activeEditing?.cancelled_at ?? null,
+      recurrence_frequency: activeScope === "occurrence" ? null : activeDraft.recurrence_frequency || null,
+      recurrence_interval: activeScope === "occurrence" || !activeDraft.recurrence_frequency ? null : activeDraft.recurrence_interval,
+      recurrence_until: activeScope === "occurrence" || !activeDraft.recurrence_frequency ? null : activeDraft.recurrence_until || null,
       recurrence_count: null };
-    const candidate = { id: editing?.id ?? "new", starts_at: parsed.data.starts_at, ends_at: parsed.data.ends_at };
+    const candidate = { id: activeEditing?.id ?? "new", starts_at: parsed.data.starts_at, ends_at: parsed.data.ends_at };
     let conflictRows: Appointment[] = [];
     if (payload.recurrence_frequency) {
       const horizonEnd = payload.recurrence_until
@@ -380,11 +396,11 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       ]);
       const ids = (seriesRows.data ?? []).map((item) => item.id);
       const exceptionRows = ids.length ? await supabase.from("appointments").select("*").in("series_id", ids).limit(500) : { data: [] };
-      const ownSeries = editScope === "series" ? editing?.id : null;
+      const ownSeries = activeScope === "series" ? activeEditing?.id : null;
       const existing = [...(singleRows.data ?? []), ...(seriesRows.data ?? []), ...(exceptionRows.data ?? [])]
         .filter((item) => !ownSeries || (item.id !== ownSeries && item.series_id !== ownSeries)) as Appointment[];
       const recurringConflicts = findRecurringConflicts(
-        [{ ...(editing ?? {}), ...payload, id: editing?.id ?? "new", series_id: null, original_occurrence_start: null } as Appointment],
+        [{ ...(activeEditing ?? {}), ...payload, id: activeEditing?.id ?? "new", series_id: null, original_occurrence_start: null } as Appointment],
         existing, payload.starts_at, horizonEnd.toISOString(),
       );
       const directConflicts = existing.filter((item) => findConflicts(candidate, [item]).length);
@@ -406,7 +422,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       const existing = [...(overlapResult.data ?? []), ...(seriesResult.data ?? []), ...(exceptionResult.data ?? [])]
         .filter((item) => !seriesParentId || (item.id !== seriesParentId && item.series_id !== seriesParentId)) as Appointment[];
       conflictRows = findRecurringConflicts(
-        [{ ...(editing ?? {}), ...payload, id: editing?.id ?? "new", series_id: null,
+        [{ ...(activeEditing ?? {}), ...payload, id: activeEditing?.id ?? "new", series_id: null,
           original_occurrence_start: null } as Appointment],
         existing, candidate.starts_at, candidate.ends_at,
       );
@@ -416,19 +432,19 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       setConflicts(found);
       setPending(false); return;
     }
-    const isGenerated = editing && "is_generated_occurrence" in editing && editing.is_generated_occurrence;
-    const occurrencePayload = editScope === "occurrence" ? {
+    const isGenerated = activeEditing && "is_generated_occurrence" in activeEditing && activeEditing.is_generated_occurrence;
+    const occurrencePayload = activeScope === "occurrence" ? {
       ...payload, series_id: seriesParentId,
-      original_occurrence_start: editing?.original_occurrence_start ?? editing?.starts_at ?? null,
+      original_occurrence_start: activeEditing?.original_occurrence_start ?? activeEditing?.starts_at ?? null,
     } : { ...payload, series_id: null, original_occurrence_start: null };
-    const result = editing
-      ? editScope === "occurrence" && isGenerated
+    const result = activeEditing
+      ? activeScope === "occurrence" && isGenerated
         ? await supabase.from("appointments").insert(occurrencePayload).select("*").single()
-        : await supabase.from("appointments").update(occurrencePayload).eq("id", editing.id).eq("updated_at", editing.updated_at).select("*").maybeSingle()
+        : await supabase.from("appointments").update(occurrencePayload).eq("id", activeEditing.id).eq("updated_at", activeEditing.updated_at).select("*").maybeSingle()
       : await supabase.from("appointments").insert(occurrencePayload).select("*").single();
     setPending(false);
     if (result.error) {
-      if (editScope === "occurrence" && isGenerated && result.error.code === "23505") {
+      if (activeScope === "occurrence" && isGenerated && result.error.code === "23505") {
         setStale(true);
         return setMessage("This occurrence changed on another device. Reload the latest version before saving.");
       }
@@ -531,9 +547,9 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       setRefreshKey((value) => value + 1);
     }
   }
-  async function cancelItem(item: Appointment | AppointmentOccurrence) {
+  async function cancelItem(item: Appointment | AppointmentOccurrence, scope = editScope) {
     const now = new Date().toISOString();
-    if (editScope === "occurrence" && "is_generated_occurrence" in item && item.is_generated_occurrence) {
+    if (scope === "occurrence" && "is_generated_occurrence" in item && item.is_generated_occurrence) {
       const { occurrence_id: _occurrenceId, series_parent_id: parentId, is_generated_occurrence: _generated, ...databaseItem } = item;
       void _occurrenceId; void _generated;
       const { data, error } = await supabase.from("appointments").insert({
@@ -545,9 +561,9 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       else { setEditing(data as Appointment); setOpen(false); setMessage("This occurrence was cancelled."); setRefreshKey((value) => value + 1); void load(); }
       return;
     }
-    if (editScope === "series"
+    if (scope === "series"
       && !window.confirm(`Cancel the entire recurring series “${item.title}”?`)) return;
-    await undoablePatch(item, { status: "cancelled", cancelled_at: now }, undoAppointmentValues(item), editScope === "series" ? "Recurring series cancelled." : "Appointment cancelled.");
+    await undoablePatch(item, { status: "cancelled", cancelled_at: now }, undoAppointmentValues(item), scope === "series" ? "Recurring series cancelled." : "Appointment cancelled.");
   }
   async function skipPreviewOccurrence(item: RecurrencePreviewItem) {
     const occurrence = item.occurrence;
@@ -573,19 +589,70 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     setOpen(false);
     void openAppointmentEditor(item.occurrence, true);
   }
-  async function remove(item: Appointment) {
-    if (editScope === "occurrence" && "is_generated_occurrence" in item && item.is_generated_occurrence) {
-      if (!window.confirm(`Remove only this occurrence of “${item.title}”? The series will remain.`)) return;
-      await cancelItem(item);
+  async function remove(item: Appointment | AppointmentOccurrence, scope = editScope, confirmed = false) {
+    if (scope === "occurrence" && "is_generated_occurrence" in item && item.is_generated_occurrence) {
+      if (!confirmed && !window.confirm(`Remove only this occurrence of “${item.title}”? The series will remain.`)) return;
+      await cancelItem(item, scope);
       return;
     }
-    const scope = editScope === "series" ? "entire recurring series" : "appointment";
-    if (!window.confirm(`Permanently delete the ${scope} “${item.title}”? This cannot be undone.`)) return;
+    const scopeLabel = scope === "series" ? "entire recurring series" : "appointment";
+    if (!confirmed && !window.confirm(`Permanently delete the ${scopeLabel} “${item.title}”? This cannot be undone.`)) return;
     const { data, error } = await supabase.from("appointments").delete()
       .eq("id", item.id).eq("updated_at", item.updated_at).select("id");
     if (error) setMessage(appointmentError(error));
     else if (!data?.length) setMessage("This appointment changed on another device. Refresh and try again.");
     else { setOpen(false); setMessage("Appointment permanently deleted."); setRefreshKey((value) => value + 1); void load(); }
+  }
+  const seriesDraft = (parent: Appointment) => {
+    const first = initialDraft.current ?? draft;
+    const parentRange = parent.all_day ? allDayEditorRange(parent) : null;
+    const parentStart = parentRange?.start ?? toLocalInput(parent.starts_at, timezone);
+    const parentEnd = parentRange?.end ?? toLocalInput(parent.ends_at, timezone);
+    if (parent.all_day !== draft.all_day || first.all_day !== draft.all_day) return draft;
+    const shiftValue = (value: string, milliseconds: number) => draft.all_day
+      ? new Date(Date.parse(`${value.slice(0, 10)}T00:00:00Z`) + milliseconds).toISOString().slice(0, 10)
+      : shiftLocalField(value, milliseconds);
+    const valueMilliseconds = (value: string) => draft.all_day
+      ? Date.parse(`${value.slice(0, 10)}T00:00:00Z`)
+      : localFieldMilliseconds(value);
+    return { ...draft,
+      starts_at: shiftValue(parentStart, valueMilliseconds(draft.starts_at) - valueMilliseconds(first.starts_at)),
+      ends_at: shiftValue(parentEnd, valueMilliseconds(draft.ends_at) - valueMilliseconds(first.ends_at)),
+    };
+  };
+  async function chooseRecurringScope(scope: "occurrence" | "series") {
+    const choice = recurringEditChoice;
+    if (!choice) return;
+    setRecurringEditChoice(null);
+    if (scope === "occurrence") {
+      setDeferRecurringScope(false); setEditScope("occurrence");
+      if (choice.action === "save") await save(undefined, false, "occurrence", choice.item, draft);
+      else await remove(choice.item, "occurrence", true);
+      return;
+    }
+    const parent = editingSeriesParent ?? (seriesParentId
+      ? (await supabase.from("appointments").select("*").eq("id", seriesParentId).maybeSingle()).data as Appointment | null
+      : null);
+    if (!parent) { setMessage("The recurring series could not be loaded."); return; }
+    const nextDraft = seriesDraft(parent);
+    setEditing(parent); setEditingSeriesParent(parent); setDraft(nextDraft); setDeferRecurringScope(false); setEditScope("series");
+    if (choice.action === "save") await save(undefined, false, "series", parent, nextDraft);
+    else await remove(parent, "series", true);
+  }
+  function requestSave(event: FormEvent) {
+    event.preventDefault();
+    if (deferRecurringScope && editing) {
+      setRecurringEditChoice({ action: "save", item: editing, trigger: document.activeElement as HTMLElement | null });
+      return;
+    }
+    void save();
+  }
+  function requestDelete() {
+    if (deferRecurringScope && editing) {
+      setRecurringEditChoice({ action: "delete", item: editing, trigger: document.activeElement as HTMLElement | null });
+      return;
+    }
+    if (editing) void remove(editing);
   }
   async function move(id: string, start: Date, end: Date, revert: () => void) {
     const item = appointments.find((value) => value.occurrence_id === id);
@@ -699,9 +766,9 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     />}
     {undo && <div className="mobile-undo-offset safe-bottom fixed left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-foreground px-4 py-3 text-background shadow-xl" role="status"><span>{undo.label}</span><button type="button" onClick={() => void undoLastAction()} className="rounded-md border border-background px-3">Undo</button></div>}
 
-    {recurringEditChoice && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><div ref={recurringChoiceRef} role="dialog" aria-modal="true" aria-labelledby="recurring-edit-title" aria-describedby="recurring-edit-description" className="w-full max-w-md rounded-xl bg-surface p-5 shadow-xl"><h2 id="recurring-edit-title" className="text-xl font-semibold">Edit recurring appointment</h2><div id="recurring-edit-description" className="mt-2 text-sm text-muted"><p>This appointment is part of a recurring series.</p><p>What would you like to edit?</p></div><div className="mt-5 grid gap-2"><button type="button" className="rounded-lg bg-primary px-4 py-3 font-semibold text-white" onClick={() => { const item=recurringEditChoice.item; setRecurringEditChoice(null); void openAppointmentEditor(item,true); }}>This appointment only</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={() => { const item=recurringEditChoice.item; setRecurringEditChoice(null); void openAppointmentEditor(item,false); }}>Entire series</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={closeRecurringEditChoice}>Cancel</button></div></div></div>}
-    {open && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={editing ? "Edit appointment" : "Create appointment"}><form onSubmit={save} className="mx-auto max-w-2xl rounded-xl bg-surface p-5 shadow-xl sm:p-7">
-      <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold">{editing ? "Appointment details" : "New appointment"}</h2>{editScope === "series" && <p className="text-sm text-muted">Editing the entire recurring series</p>}{editScope === "occurrence" && <p className="text-sm text-muted">Editing this occurrence only</p>}</div><button type="button" onClick={() => setOpen(false)} aria-label="Close"><X/></button></div>
+    {recurringEditChoice && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><div ref={recurringChoiceRef} role="dialog" aria-modal="true" aria-labelledby="recurring-edit-title" aria-describedby="recurring-edit-description" className="w-full max-w-md rounded-xl bg-surface p-5 shadow-xl"><h2 id="recurring-edit-title" className="text-xl font-semibold">{recurringEditChoice.action === "save" ? "Save recurring appointment" : "Delete recurring appointment"}</h2><div id="recurring-edit-description" className="mt-2 text-sm text-muted"><p>This appointment is part of a recurring series.</p><p>{recurringEditChoice.action === "save" ? "What would you like to save?" : "What would you like to delete?"}</p></div><div className="mt-5 grid gap-2"><button type="button" className="rounded-lg bg-primary px-4 py-3 font-semibold text-white" onClick={() => void chooseRecurringScope("occurrence")}>{recurringEditChoice.action === "save" ? "This appointment only" : "Delete this appointment only"}</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={() => void chooseRecurringScope("series")}>{recurringEditChoice.action === "save" ? "Entire series" : "Delete entire series"}</button><button type="button" className="rounded-lg border border-border px-4 py-3" onClick={closeRecurringEditChoice}>Cancel</button></div></div></div>}
+    {open && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={editing ? "Edit appointment" : "Create appointment"}><form onSubmit={requestSave} className="mx-auto max-w-2xl rounded-xl bg-surface p-5 shadow-xl sm:p-7">
+      <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold">{editing ? "Appointment details" : "New appointment"}</h2>{deferRecurringScope && <p className="text-sm text-muted">Recurring appointment</p>}{!deferRecurringScope && editScope === "series" && <p className="text-sm text-muted">Editing the entire recurring series</p>}{!deferRecurringScope && editScope === "occurrence" && <p className="text-sm text-muted">Editing this occurrence only</p>}</div><button type="button" onClick={() => setOpen(false)} aria-label="Close"><X/></button></div>
       {draftHint && <p role="status" className="mt-4 rounded-lg bg-background p-3 text-sm text-muted">{draftHint}</p>}
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2">Title<input required maxLength={180} value={draft.title} onChange={(e) => setDraft({...draft,title:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
@@ -710,7 +777,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
         <div><span className="font-medium">Start</span><EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,duration > 0 ? duration : defaultDurationMinutes * 60_000); setDraft({...draft,starts_at:start,ends_at:end}); }}/></div>
         <div><span className="font-medium">End</span><EnglishDateTimePicker ariaLabel="End" value={draft.ends_at} dateOnly={draft.all_day} timeFormat={timeFormat} min={draft.starts_at} describedBy="event-range-error" onChange={(ends_at) => { endOverridden.current=true; setDraft({...draft,ends_at}); }}/>{draft.ends_at < draft.starts_at && <span id="event-range-error" role="alert" className="mt-1 block text-sm text-red-700">End must not be earlier than Start.</span>}</div>
         <label>Location<input value={draft.location} onChange={(e) => setDraft({...draft,location:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
-        {editScope !== "occurrence" && <RecurrenceEditor appointment={{...editing, id: editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===editing.id) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean(editing?.id && !editing.series_id && editing.recurrence_frequency)} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={skipPreviewOccurrence} onRestore={restorePreviewOccurrence} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
+        {(editScope !== "occurrence" || deferRecurringScope) && <RecurrenceEditor appointment={{...(deferRecurringScope && editingSeriesParent ? editingSeriesParent : editing), id: deferRecurringScope && editingSeriesParent ? editingSeriesParent.id : editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===(deferRecurringScope ? editingSeriesParent?.id : editing.id)) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean((deferRecurringScope ? editingSeriesParent?.id : editing?.id) && draft.recurrence_frequency)} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={skipPreviewOccurrence} onRestore={restorePreviewOccurrence} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
         <fieldset className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Reminders</legend><div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option)=><label key={option.value} className="flex items-center gap-2"><input aria-label={option.value === 0 ? "Reminder when event begins" : `Reminder ${option.label.toLowerCase()}`} type="checkbox" checked={draft.reminder_minutes.includes(option.value)} onChange={(e)=>setDraft({...draft,reminder_minutes:normalizeReminderMinutes(e.target.checked?[...draft.reminder_minutes,option.value]:draft.reminder_minutes.filter((value)=>value!==option.value))})}/><span aria-hidden="true">{option.label}</span></label>)}</div><p className="mt-2 text-sm text-muted">Browser notifications are best effort and only used when permission has been granted.</p></fieldset>
         <label className="sm:col-span-2">Notes<textarea value={draft.public_notes} onChange={(e) => setDraft({...draft,public_notes:e.target.value})} className="mt-1 min-h-24 w-full rounded-lg border border-border bg-background p-3"/></label>
         {editing && <fieldset className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Public read-only sharing</legend>
@@ -720,11 +787,11 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
           <div className="flex gap-2">{!share && <button type="button" onClick={()=>void createShare()} className="rounded-lg border border-border px-3">Create sharing link</button>}{share && <><button type="button" onClick={()=>void revokeShare()} className="rounded-lg border border-red-700 px-3 text-red-700">Revoke link</button><button type="button" onClick={()=>void regenerateShare()} className="rounded-lg border border-border px-3">Regenerate</button></>}</div>
         </fieldset>}
       </div>
-      {conflicts.length > 0 && !allowConflict && <div role="alert" className="mt-4 rounded-lg border border-amber-600 p-3"><strong>Time conflict</strong>{conflicts.map((item) => <p key={item.id} className="text-sm">{item.title}: {formatDateTime(item.starts_at, timezone, timeFormat)}–{formatTime(item.ends_at, timezone, timeFormat)}</p>)}<button type="button" onClick={() => { setAllowConflict(true); void save(undefined, true); }} className="mt-2 rounded-lg border border-border px-3">Save anyway</button></div>}
+      {conflicts.length > 0 && !allowConflict && <div role="alert" className="mt-4 rounded-lg border border-amber-600 p-3"><strong>Time conflict</strong>{conflicts.map((item) => <p key={item.id} className="text-sm">{item.title}: {formatDateTime(item.starts_at, timezone, timeFormat)}–{formatTime(item.ends_at, timezone, timeFormat)}</p>)}<button type="button" onClick={() => { const context=saveContext.current; setAllowConflict(true); if(context) void save(undefined,true,context.scope,context.editing,context.draft); }} className="mt-2 rounded-lg border border-border px-3">Save anyway</button></div>}
       {message && <p role={stale ? "alert" : "status"} className="mt-4 text-sm">{message}</p>}
       {stale && <button type="button" onClick={() => void reloadLatest()} className="mt-2 rounded-lg border border-border px-3">Reload latest appointment</button>}
       <div className="mt-6 flex flex-wrap gap-2"><button disabled={pending} className="rounded-lg bg-primary px-4 font-semibold text-white disabled:opacity-60">{pending ? "Saving…" : "Save appointment"}</button>
-        {editing && <button type="button" onClick={() => remove(editing)} className="ml-auto flex items-center gap-1 rounded-lg border border-red-700 px-3 text-red-700"><Trash2 size={17}/>Delete permanently</button>}
+        {editing && <button type="button" onClick={requestDelete} className="ml-auto flex items-center gap-1 rounded-lg border border-red-700 px-3 text-red-700"><Trash2 size={17}/>Delete permanently</button>}
       </div>
     </form></div>}
   </main>;

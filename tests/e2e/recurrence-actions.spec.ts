@@ -108,12 +108,10 @@ test("single occurrence removal stays scoped", async ({ page }, testInfo) => {
     await expect(occurrences.first()).toBeVisible();
     await occurrences.first().scrollIntoViewIfNeeded();
     await occurrences.first().click({ force: true });
-    const scopeDialog = page.getByRole("dialog", { name: "Edit recurring appointment" });
-    await expect(scopeDialog).toBeVisible();
-    await scopeDialog.getByRole("button", { name: "This appointment only" }).click();
-    await expect(page.getByRole("dialog").getByText("Editing this occurrence only")).toBeVisible();
-    page.once("dialog", (confirmation) => confirmation.accept());
     await page.getByRole("dialog").getByRole("button", { name: "Delete permanently" }).click();
+    const scopeDialog = page.getByRole("dialog", { name: "Delete recurring appointment" });
+    await expect(scopeDialog).toBeVisible();
+    await scopeDialog.getByRole("button", { name: "Delete this appointment only" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
     expect((await client.from("appointments").select("status").eq("id", parent.id).single()).data?.status).toBe("pending");
     await expect.poll(async () =>

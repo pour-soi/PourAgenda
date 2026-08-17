@@ -30,8 +30,9 @@ test("compact recurrence editor skips, restores, and opens occurrence-only editi
     await unsaved.getByRole("button", { name: "Close" }).click();
     const occurrence = page.locator(`[data-appointment-id^="${parent.id}:"]`).first();
     await occurrence.click({ force: true });
-    await page.getByRole("dialog", { name: "Edit recurring appointment" }).getByRole("button", { name: "Entire series" }).click();
     const editor = page.getByRole("dialog", { name: "Edit appointment" });
+    await expect(editor.getByText("Recurring appointment")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Save recurring appointment" })).toHaveCount(0);
     await expect(editor.getByLabel("Repeat pattern")).toHaveValue("weekly");
     await expect(editor.getByText("Repeat on")).toBeVisible();
     await expect(editor.getByText("Summary")).toBeVisible();

@@ -230,8 +230,10 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
 
   const targetEventBounds = (await targetCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
   const neighborEventBounds = (await neighborCell.locator(".fc-daygrid-event:visible").first().boundingBox())!;
+  const eventRegionBounds = (await targetCell.locator(".fc-daygrid-day-events").boundingBox())!;
   expect(Math.abs(targetEventBounds.y - neighborEventBounds.y)).toBeLessThan(1);
   expect(Math.abs((targetEventBounds.x + targetEventBounds.width / 2) - (frameBounds.x + frameBounds.width / 2))).toBeLessThan(1);
+  expect(Math.abs((targetEventBounds.y + targetEventBounds.height / 2) - (eventRegionBounds.y + eventRegionBounds.height / 2))).toBeLessThan(1);
   expect(targetEventBounds.height).toBeGreaterThanOrEqual(25);
   expect(targetEventBounds.x).toBeGreaterThanOrEqual(frameBounds.x);
   expect(targetEventBounds.x + targetEventBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
