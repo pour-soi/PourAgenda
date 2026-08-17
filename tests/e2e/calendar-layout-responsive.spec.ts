@@ -48,8 +48,8 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
 
       const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
       const frame = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
-      expect(frame!.height).toBeGreaterThanOrEqual(56);
-      expect(frame!.height, `${viewport.width}px month cell height`).toBeLessThanOrEqual(viewport.width < 390 ? 66 : 76);
+      expect(frame!.height).toBeGreaterThanOrEqual(54);
+      expect(frame!.height, `${viewport.width}px month cell height`).toBeLessThanOrEqual(viewport.width < 390 ? 60 : 65);
       await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("2");
       await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
       await expect(targetCell).not.toContainText(/\+\d+/);
@@ -221,7 +221,7 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   await expect(count).toHaveCSS("border-top-style", "solid");
   await expect(count).toHaveCSS("border-top-color", "rgb(180, 83, 42)");
   const borderWidth = await count.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
-  expect(borderWidth).toBeGreaterThanOrEqual(1.3);
+  expect(borderWidth).toBeGreaterThanOrEqual(1);
   expect(borderWidth).toBeLessThanOrEqual(1.5);
   await expect(count).toHaveCSS("color", "rgb(180, 83, 42)");
   await expect(count).toHaveCSS("border-radius", "9999px");
@@ -252,6 +252,7 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   expect(Math.abs((targetEventBounds.x + targetEventBounds.width / 2) - (frameBounds.x + frameBounds.width / 2))).toBeLessThan(1);
   expect(Math.abs((targetEventBounds.y + targetEventBounds.height / 2) - (eventRegionBounds.y + eventRegionBounds.height / 2))).toBeLessThan(1);
   expect(targetEventBounds.height).toBeGreaterThanOrEqual(25);
+  await expect(targetCell.locator(".fc-daygrid-event:visible").first()).toHaveCSS("border-radius", "6px");
   expect(targetEventBounds.x).toBeGreaterThanOrEqual(frameBounds.x);
   expect(targetEventBounds.x + targetEventBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
 

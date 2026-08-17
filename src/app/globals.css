@@ -582,7 +582,7 @@ button, a, input, select { min-height: var(--touch); }
     display: grid;
     position: relative;
     grid-template-rows: 28px minmax(26px, 1fr);
-    min-height: clamp(58px, 17vw, 72px);
+    min-height: clamp(54px, 15.3vw, 65px);
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-top {
     display: block;
@@ -664,6 +664,9 @@ button, a, input, select { min-height: var(--touch); }
     padding: 3px 4px;
     font-size: .775rem;
     line-height: 1.125rem;
+  }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-event {
+    border-radius: 6px;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-popover { display: none !important; }
   .pouragenda-calendar .fc .fc-daygrid-event .calendar-event-content {
