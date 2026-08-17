@@ -74,7 +74,12 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
       const event = page.locator('[data-appointment-id="preview-1"]');
       expect(await event.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#375f52");
       await event.click();
-      await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
+      const editor = page.getByRole("dialog", { name: "Edit appointment" });
+      await expect(editor).toBeVisible();
+      await expect(editor.getByText("Public read-only sharing")).toHaveCount(0);
+      await expect(editor.getByRole("button", { name: /Create sharing link|Revoke link|Regenerate/ })).toHaveCount(0);
+      await expect(editor.getByLabel("Notes")).toBeVisible();
+      await expect(editor.getByRole("group", { name: "Reminders" })).toBeVisible();
       await page.getByRole("button", { name: "Close" }).click();
     }
 

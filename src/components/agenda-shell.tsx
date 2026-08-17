@@ -103,10 +103,6 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const [calendarLoadError, setCalendarLoadError] = useState("");
   const [appointmentsLoadedAt, setAppointmentsLoadedAt] = useState(0);
   const [online, setOnline] = useState(true);
-  const [share, setShare] = useState<{ id: string; revoked_at: string | null; expires_at: string | null; updated_at: string } | null>(null);
-  const [shareUrl, setShareUrl] = useState("");
-  const [shareLocation, setShareLocation] = useState(false);
-  const [shareNotes, setShareNotes] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [searchCatalog, setSearchCatalog] = useState<Appointment[]>([]);
   const [searchCatalogLoading, setSearchCatalogLoading] = useState(false);
@@ -293,9 +289,6 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     ]);
     const current = (latest.data ?? item) as Appointment;
     const parent = parentResult.data as Appointment | null;
-    const shareResult = await supabase.from("appointment_shares").select("id,revoked_at,expires_at,updated_at")
-      .eq("appointment_id", targetId).is("revoked_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    setShare(shareResult.data); setShareUrl("");
     setEditScope(parentId ? (occurrenceScope ? "occurrence" : "series") : "single");
     setDeferRecurringScope(Boolean(parentId && deferScope));
     setSeriesParentId(parentId);
@@ -464,45 +457,6 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     if (!data) { setStale(true); setMessage("This appointment was changed on another device. Reload the latest version before saving."); return null; }
     setEditing(data as Appointment); setMessage("Appointment updated."); setRefreshKey((value) => value + 1); void load();
     return data as Appointment;
-  }
-  async function createShare() {
-    if (!editing || pending) return;
-    const expiryInput = window.prompt("Optional expiration date (YYYY-MM-DD), or leave blank:");
-    if (expiryInput === null) return;
-    const expiry = expiryInput ? new Date(`${expiryInput}T23:59:59Z`).toISOString() : null;
-    setPending(true);
-    const { data: token, error } = await supabase.rpc("create_appointment_share", {
-      target_appointment_id: seriesParentId ?? editing.id, show_location: shareLocation, show_public_notes: shareNotes, expiry,
-    });
-    setPending(false);
-    if (error || !token) return setMessage("The sharing link could not be created.");
-    const url = `${window.location.origin}/share/${token}`;
-    setShareUrl(url);
-    const latest = await supabase.from("appointment_shares").select("id,revoked_at,expires_at,updated_at")
-      .eq("appointment_id", seriesParentId ?? editing.id).is("revoked_at", null).order("created_at", { ascending: false }).limit(1).single();
-    setShare(latest.data);
-    await supabase.from("appointment_activity").insert({
-      user_id: userId, appointment_id: seriesParentId ?? editing.id, action: "share_created",
-    });
-    setMessage("Sharing link created. Copy it now; PourAgenda does not store the public token.");
-  }
-  async function revokeShare() {
-    if (!share) return;
-    const result = await supabase.from("appointment_shares").update({ revoked_at: new Date().toISOString() })
-      .eq("id", share.id).eq("updated_at", share.updated_at).select("id").maybeSingle();
-    if (result.error || !result.data) return setMessage("The link changed elsewhere. Reload before revoking it.");
-    await supabase.from("appointment_activity").insert({
-      user_id: userId, appointment_id: seriesParentId ?? editing?.id ?? null, action: "share_revoked",
-    });
-    setShare(null); setShareUrl(""); setMessage("Sharing link revoked.");
-  }
-  async function regenerateShare() {
-    if (!share) return;
-    const revoked = await supabase.from("appointment_shares").update({ revoked_at: new Date().toISOString() })
-      .eq("id", share.id).eq("updated_at", share.updated_at).select("id").maybeSingle();
-    if (revoked.error || !revoked.data) return setMessage("The link changed elsewhere. Reload before regenerating it.");
-    setShare(null); setShareUrl("");
-    await createShare();
   }
   async function undoablePatch(item: Appointment, values: Partial<Appointment>, previous: Partial<Appointment>, label: string) {
     setUndo(null);
@@ -780,12 +734,6 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
         {(editScope !== "occurrence" || deferRecurringScope) && <RecurrenceEditor appointment={{...(deferRecurringScope && editingSeriesParent ? editingSeriesParent : editing), id: deferRecurringScope && editingSeriesParent ? editingSeriesParent.id : editing?.id ?? "draft", starts_at:iso(draft.starts_at,draft.all_day), ends_at:iso(draft.ends_at,draft.all_day,true), intended_local_start:draft.starts_at, intended_local_end:draft.ends_at, timezone, all_day:draft.all_day, status:editing?.status ?? "pending", recurrence_frequency:draft.recurrence_frequency || null, recurrence_interval:draft.recurrence_interval, recurrence_until:draft.recurrence_until || null} as Appointment} exceptions={editing ? recurrenceRows.filter((row)=>row.series_id===(deferRecurringScope ? editingSeriesParent?.id : editing.id)) : []} frequency={draft.recurrence_frequency} interval={draft.recurrence_interval} until={draft.recurrence_until} timezone={timezone} persisted={Boolean((deferRecurringScope ? editingSeriesParent?.id : editing?.id) && draft.recurrence_frequency)} onFrequency={(recurrence_frequency,recurrence_interval)=>setDraft({...draft,recurrence_frequency,recurrence_interval})} onInterval={(recurrence_interval)=>setDraft({...draft,recurrence_interval})} onUntil={(recurrence_until)=>setDraft({...draft,recurrence_until})} onSkip={skipPreviewOccurrence} onRestore={restorePreviewOccurrence} onEdit={editPreviewOccurrence} onMove={editPreviewOccurrence}/>}
         <fieldset className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Reminders</legend><div className="flex flex-wrap gap-4">{REMINDER_OPTIONS.map((option)=><label key={option.value} className="flex items-center gap-2"><input aria-label={option.value === 0 ? "Reminder when event begins" : `Reminder ${option.label.toLowerCase()}`} type="checkbox" checked={draft.reminder_minutes.includes(option.value)} onChange={(e)=>setDraft({...draft,reminder_minutes:normalizeReminderMinutes(e.target.checked?[...draft.reminder_minutes,option.value]:draft.reminder_minutes.filter((value)=>value!==option.value))})}/><span aria-hidden="true">{option.label}</span></label>)}</div><p className="mt-2 text-sm text-muted">Browser notifications are best effort and only used when permission has been granted.</p></fieldset>
         <label className="sm:col-span-2">Notes<textarea value={draft.public_notes} onChange={(e) => setDraft({...draft,public_notes:e.target.value})} className="mt-1 min-h-24 w-full rounded-lg border border-border bg-background p-3"/></label>
-        {editing && <fieldset className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2"><legend className="px-1 font-semibold">Public read-only sharing</legend>
-          <p className="text-sm text-muted">{share ? "An active link exists for this appointment." : "No active sharing link."}</p>
-          {!share && <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2"><input aria-label="Show venue publicly" type="checkbox" checked={shareLocation} onChange={(e)=>setShareLocation(e.target.checked)}/><span aria-hidden="true">Show location</span></label><label className="flex items-center gap-2"><input type="checkbox" checked={shareNotes} onChange={(e)=>setShareNotes(e.target.checked)}/>Show public notes</label></div>}
-          {shareUrl && <div><label className="sr-only" htmlFor="share-url">Public URL</label><input id="share-url" readOnly value={shareUrl} className="w-full rounded-lg border border-border bg-background px-3"/><button type="button" onClick={async()=>{await navigator.clipboard.writeText(shareUrl);setMessage("Link copied.");}} className="mt-2 rounded-lg border border-border px-3">Copy link</button></div>}
-          <div className="flex gap-2">{!share && <button type="button" onClick={()=>void createShare()} className="rounded-lg border border-border px-3">Create sharing link</button>}{share && <><button type="button" onClick={()=>void revokeShare()} className="rounded-lg border border-red-700 px-3 text-red-700">Revoke link</button><button type="button" onClick={()=>void regenerateShare()} className="rounded-lg border border-border px-3">Regenerate</button></>}</div>
-        </fieldset>}
       </div>
       {conflicts.length > 0 && !allowConflict && <div role="alert" className="mt-4 rounded-lg border border-amber-600 p-3"><strong>Time conflict</strong>{conflicts.map((item) => <p key={item.id} className="text-sm">{item.title}: {formatDateTime(item.starts_at, timezone, timeFormat)}–{formatTime(item.ends_at, timezone, timeFormat)}</p>)}<button type="button" onClick={() => { const context=saveContext.current; setAllowConflict(true); if(context) void save(undefined,true,context.scope,context.editing,context.draft); }} className="mt-2 rounded-lg border border-border px-3">Save anyway</button></div>}
       {message && <p role={stale ? "alert" : "status"} className="mt-4 text-sm">{message}</p>}

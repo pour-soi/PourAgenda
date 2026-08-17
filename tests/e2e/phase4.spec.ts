@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cleanupTitles, createLiveAppointment, liveClient, loginPage } from "./live-fixtures";
+import { liveClient, loginPage } from "./live-fixtures";
 
 test("contacts remain usable without horizontal overflow", async ({ page }) => {
   await loginPage(page);
@@ -34,6 +34,12 @@ test("Phase 4 controls remain accessible and responsive", async ({ page }) => {
   await page.getByRole("button", { name: "New appointment" }).first().click();
   const appointment = page.getByRole("dialog");
   await expect(appointment.getByLabel("Contact")).toHaveCount(0);
+  await expect(appointment.getByText("Public read-only sharing")).toHaveCount(0);
+  await expect(appointment.getByText("No active sharing link.")).toHaveCount(0);
+  await expect(appointment.getByRole("button", { name: "Create sharing link" })).toHaveCount(0);
+  await expect(appointment.getByLabel("Show public notes")).toHaveCount(0);
+  await expect(appointment.getByLabel("Notes")).toBeVisible();
+  await expect(appointment.getByRole("group", { name: "Reminders" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await appointment.getByRole("button", { name: "Close" }).click();
   await page.close();
@@ -74,37 +80,5 @@ test("contact actions create bounded owner activity history", async ({ page }, t
     await client.from("appointment_activity").delete().gte("occurred_at", startedAt)
       .in("action", ["contact_created", "contact_updated", "contact_deleted"]);
     await client.auth.signOut();
-  }
-});
-
-test("owner creates, views, and revokes a public-safe sharing link", async ({ page, browser }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One live mutation run is sufficient; responsive coverage is separate.");
-  const client = await liveClient("A");
-  const title = `Phase 4 share ${Date.now()}`;
-  await createLiveAppointment(client, title, {
-    location: "Public location", public_notes: "Public note", private_notes: "Private secret",
-  });
-  try {
-    await loginPage(page);
-    await page.getByText(title, { exact: true }).first().click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Show venue publicly").check();
-    await dialog.getByLabel("Show public notes").check();
-    page.once("dialog", (prompt) => prompt.accept(""));
-    await dialog.getByRole("button", { name: "Create sharing link" }).click();
-    const url = await dialog.getByLabel("Public URL").inputValue();
-    const anonymous = await browser.newContext();
-    const publicPage = await anonymous.newPage();
-    await publicPage.goto(url);
-    await expect(publicPage.getByRole("heading", { name: title })).toBeVisible();
-    await expect(publicPage.getByText("Public location")).toBeVisible();
-    await expect(publicPage.getByText("Public note")).toBeVisible();
-    await expect(publicPage.getByText("Private secret")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Revoke link" }).click();
-    await publicPage.reload();
-    await expect(publicPage.getByRole("heading", { name: title })).toHaveCount(0);
-    await anonymous.close();
-  } finally {
-    await cleanupTitles(client, [title]);
   }
 });
