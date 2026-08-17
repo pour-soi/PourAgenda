@@ -227,9 +227,16 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   const frameBounds = (await targetCell.locator(".fc-daygrid-day-frame").boundingBox())!;
   const countBounds = (await count.boundingBox())!;
   const dateBounds = (await dateNumber.boundingBox())!;
-  expect(countBounds.width).toBe(20);
-  expect(countBounds.height).toBe(20);
-  expect(countBounds.x - frameBounds.x).toBeLessThan(8);
+  expect(countBounds.width).toBe(18);
+  expect(countBounds.height).toBe(18);
+  await expect(count).toHaveCSS("left", "8px");
+  await expect(count).toHaveCSS("top", "8px");
+  expect(countBounds.x - frameBounds.x).toBeGreaterThanOrEqual(8);
+  expect(countBounds.x - frameBounds.x).toBeLessThanOrEqual(10);
+  expect(countBounds.y - frameBounds.y).toBeGreaterThanOrEqual(8);
+  expect(countBounds.y - frameBounds.y).toBeLessThanOrEqual(10);
+  await expect(count).toHaveCSS("font-size", "10px");
+  await expect(count).toHaveCSS("box-shadow", /rgba\(100, 45, 18, 0\.18\)/);
   expect(countBounds.x).toBeLessThan(dateBounds.x);
   expect(dateBounds.x + dateBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
 
