@@ -217,8 +217,13 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   const count = targetCell.locator(".mobile-month-event-count");
   const dateNumber = targetCell.locator(".mobile-month-date-number");
   await expect(count).toHaveText(String(state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length));
-  await expect(count).toHaveCSS("background-color", "rgb(180, 83, 42)");
-  await expect(count).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(count).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(count).toHaveCSS("border-top-style", "solid");
+  await expect(count).toHaveCSS("border-top-color", "rgb(180, 83, 42)");
+  const borderWidth = await count.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
+  expect(borderWidth).toBeGreaterThanOrEqual(1.3);
+  expect(borderWidth).toBeLessThanOrEqual(1.5);
+  await expect(count).toHaveCSS("color", "rgb(180, 83, 42)");
   await expect(count).toHaveCSS("border-radius", "9999px");
   await expect(singleEventCell.locator(".mobile-month-event-count")).toHaveCount(0);
   await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
@@ -236,7 +241,7 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   expect(countBounds.y - frameBounds.y).toBeGreaterThanOrEqual(8);
   expect(countBounds.y - frameBounds.y).toBeLessThanOrEqual(10);
   await expect(count).toHaveCSS("font-size", "10px");
-  await expect(count).toHaveCSS("box-shadow", /rgba\(100, 45, 18, 0\.18\)/);
+  await expect(count).toHaveCSS("box-shadow", "none");
   expect(countBounds.x).toBeLessThan(dateBounds.x);
   expect(dateBounds.x + dateBounds.width).toBeLessThanOrEqual(frameBounds.x + frameBounds.width);
 

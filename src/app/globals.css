@@ -618,10 +618,11 @@ button, a, input, select { min-height: var(--touch); }
     align-items: center;
     justify-content: center;
     padding: 0;
+    border: 1.5px solid #b4532a;
     border-radius: 9999px;
-    background: #b4532a;
-    box-shadow: 0 1px 1px rgb(100 45 18 / .18);
-    color: #fff;
+    background: #fff;
+    box-shadow: none;
+    color: #b4532a;
     cursor: pointer;
     font-size: .625rem;
     font-weight: 700;
