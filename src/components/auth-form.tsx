@@ -4,10 +4,11 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeInternalPath } from "@/lib/notification-deep-link";
 
 type Mode = "login" | "register" | "forgot" | "reset";
 
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, nextPath = "/" }: { mode: Mode; nextPath?: string }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -26,7 +27,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.replace("/");
+        router.replace(safeInternalPath(nextPath));
         router.refresh();
       } else if (mode === "register") {
         const { data, error } = await supabase.auth.signUp({

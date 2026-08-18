@@ -20,6 +20,7 @@ import { REMINDER_OPTIONS, normalizeReminderMinutes, reminderTimes } from "@/lib
 import { createClient } from "@/lib/supabase/client";
 import { buildCalendarEvents } from "@/lib/calendar-events";
 import type { Appointment, AppointmentOccurrence, RecurrenceFrequency } from "@/types/domain";
+import { notificationTargetKey } from "@/lib/notification-deep-link";
 
 const Calendar = dynamic(() => import("@/components/calendar-view"), {
   ssr: false,
@@ -61,8 +62,8 @@ const blankDraft = (categoryId: string, timezone: string, reminders: number[], d
     recurrence_until: "", reminder_minutes: reminders };
 };
 
-export function AgendaShell({ email, userId, timezone: configuredTimezone, automaticTimezone, timeFormatPreference, defaultDuration, defaultReminders, categories }: {
-  email: string; userId: string; timezone: string; automaticTimezone: boolean; timeFormatPreference: TimeFormatPreference | string; defaultDuration: number; defaultReminders: number[]; categories: Category[];
+export function AgendaShell({ email, userId, timezone: configuredTimezone, automaticTimezone, timeFormatPreference, defaultDuration, defaultReminders, categories, initialNotificationTarget }: {
+  email: string; userId: string; timezone: string; automaticTimezone: boolean; timeFormatPreference: TimeFormatPreference | string; defaultDuration: number; defaultReminders: number[]; categories: Category[]; initialNotificationTarget?: string; initialAppointmentDate?: string;
 }) {
   const systemHourCycle = useSyncExternalStore(subscribeToSystemTimeFormat, detectSystemHourCycle, getServerHourCycle);
   const systemTimezone = useSyncExternalStore(subscribeToSystemTimezone, detectSystemTimezone, () => configuredTimezone);
@@ -112,6 +113,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const calendarLoadGeneration = useRef(0);
   const endOverridden = useRef(false);
   const recurringChoiceRef = useRef<HTMLDivElement>(null);
+  const pendingAppointmentTarget = useRef(initialNotificationTarget ?? null);
   const initialDraft = useRef<Draft | null>(null);
   const saveContext = useRef<{ scope: "single" | "series" | "occurrence"; editing: Appointment | AppointmentOccurrence | null; draft: Draft } | null>(null);
   const [recurringEditChoice, setRecurringEditChoice] = useState<{ action: "save" | "delete"; item: Appointment | AppointmentOccurrence; trigger: HTMLElement | null } | null>(null);
@@ -276,7 +278,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     setEditing(null); setEditScope("single"); setSeriesParentId(null); setDraft(next); setConflicts([]);
     setAllowConflict(false); setStale(false); setDraftHint(result.explanation); setMessage(""); setOpen(true);
   }
-  async function openAppointmentEditor(item: Appointment | AppointmentOccurrence, occurrenceScope: boolean, deferScope = false) {
+  const openAppointmentEditor = useCallback(async (item: Appointment | AppointmentOccurrence, occurrenceScope: boolean, deferScope = false) => {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
     const targetId = parentId && !occurrenceScope ? parentId : item.id;
     const [latest, parentResult] = await Promise.all([
@@ -308,12 +310,27 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
     initialDraft.current = nextDraft;
     setDraft(nextDraft);
     setConflicts([]); setAllowConflict(false); setStale(false); setDraftHint(""); setMessage(""); setOpen(true);
-  }
-  function startEdit(item: Appointment | AppointmentOccurrence) {
+  }, [supabase, timezone]);
+  const startEdit = useCallback((item: Appointment | AppointmentOccurrence) => {
     const parentId = ("series_parent_id" in item ? item.series_parent_id : null) ?? item.series_id ?? null;
     if (!parentId) return void openAppointmentEditor(item, false);
     void openAppointmentEditor(item, true, true);
-  }
+  }, [openAppointmentEditor]);
+  useEffect(() => {
+    const target = pendingAppointmentTarget.current;
+    if (!target || !appointmentsLoadedAt) return;
+    let active = true;
+    void Promise.all(appointments.map(async (candidate) => ({ candidate, key: await notificationTargetKey(candidate.occurrence_id) })))
+      .then((candidates) => {
+        if (!active || pendingAppointmentTarget.current !== target) return;
+        const item = candidates.find((candidate) => candidate.key === target)?.candidate;
+        if (!item) return;
+        pendingAppointmentTarget.current = null;
+        startEdit(item);
+        window.history.replaceState({}, "", window.location.pathname);
+      });
+    return () => { active = false; };
+  }, [appointments, appointmentsLoadedAt, startEdit]);
   const closeRecurringEditChoice = useCallback(() => {
     const trigger = recurringEditChoice?.trigger;
     setRecurringEditChoice(null);
@@ -726,7 +743,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
       {draftHint && <p role="status" className="mt-4 rounded-lg bg-background p-3 text-sm text-muted">{draftHint}</p>}
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2">Title<input required maxLength={180} value={draft.title} onChange={(e) => setDraft({...draft,title:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3"/></label>
-        <label className="sm:col-span-2">Category<select required value={draft.category_id} onChange={(e) => setDraft({...draft,category_id:e.target.value})} className="mt-1 w-full rounded-lg border border-border bg-background px-3">{categories.filter((item) => !item.hidden || item.id === draft.category_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <div className="appointment-category-field sm:col-span-2"><label htmlFor="appointment-category">Category</label><select id="appointment-category" required value={draft.category_id} onChange={(e) => setDraft({...draft,category_id:e.target.value})} className="mt-1 w-full cursor-pointer rounded-lg border border-border bg-background px-3">{categories.filter((item) => !item.hidden || item.id === draft.category_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
         <label className="flex items-center gap-2 sm:col-span-2"><input type="checkbox" checked={draft.all_day} onChange={(e) => { const all_day=e.target.checked; setDraft({...draft,all_day,starts_at:!all_day&&!draft.starts_at.includes("T")?`${draft.starts_at}T09:00`:draft.starts_at,ends_at:!all_day&&!draft.ends_at.includes("T")?`${draft.ends_at}T10:00`:draft.ends_at}); }}/>All-day appointment</label>
         <div><span className="font-medium">Start</span><EnglishDateTimePicker ariaLabel="Start" value={draft.starts_at} dateOnly={draft.all_day} timeFormat={timeFormat} onChange={(start) => { if(endOverridden.current) return setDraft({...draft,starts_at:start}); const duration=localFieldMilliseconds(draft.ends_at)-localFieldMilliseconds(draft.starts_at); const end=draft.all_day ? start : shiftLocalField(start,duration > 0 ? duration : defaultDurationMinutes * 60_000); setDraft({...draft,starts_at:start,ends_at:end}); }}/></div>
         <div><span className="font-medium">End</span><EnglishDateTimePicker ariaLabel="End" value={draft.ends_at} dateOnly={draft.all_day} timeFormat={timeFormat} min={draft.starts_at} describedBy="event-range-error" onChange={(ends_at) => { endOverridden.current=true; setDraft({...draft,ends_at}); }}/>{draft.ends_at < draft.starts_at && <span id="event-range-error" role="alert" className="mt-1 block text-sm text-red-700">End must not be earlier than Start.</span>}</div>

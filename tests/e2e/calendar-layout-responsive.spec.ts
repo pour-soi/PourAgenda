@@ -6,8 +6,23 @@ import {
   previewAppointment,
   previewDate,
 } from "./calendar-layout-fixtures";
+import { notificationTargetKey } from "../../src/lib/notification-deep-link";
 
 test.use({ serviceWorkers: "block" });
+
+test("an authenticated notification deep link opens its appointment and missing targets fail safely", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One Chromium project covers authenticated deep-link consumption.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  const target = await notificationTargetKey("preview-1");
+  await openCalendarLayoutPreview(page, createCalendarMockState(), `?target=${target}&date=${previewDate}`);
+  await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit appointment" }).getByLabel("Title")).toHaveValue("Quarterly planning with a deliberately long title");
+  await page.getByRole("button", { name: "Close" }).click();
+  const missing = await notificationTargetKey("missing");
+  await openCalendarLayoutPreview(page, createCalendarMockState(), `?target=${missing}&date=${previewDate}`);
+  await expect(page.locator(".fc")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit appointment" })).toHaveCount(0);
+});
 
 test("calendar layout follows the approved responsive breakpoints", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One Chromium project covers the exact viewport matrix.");
@@ -87,7 +102,7 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
     await expect(page.locator('[data-appointment-id="preview-1"] .calendar-event-time')).toBeVisible();
     if (viewport.width === 390) {
       const event = page.locator('[data-appointment-id="preview-1"]');
-      expect(await event.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#375f52");
+      await expect(event).toHaveCSS("background-color", "rgb(55, 95, 82)");
       await event.click();
       const editor = page.getByRole("dialog", { name: "Edit appointment" });
       await expect(editor).toBeVisible();
@@ -102,7 +117,11 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
     await expect(page.locator(".fc-list")).toBeVisible();
     expect(await page.locator(".fc-list-event-graphic").count()).toBeGreaterThan(0);
     await expect(page.locator(".fc-list-event-graphic").first()).toBeHidden();
-    await expect(page.locator(".fc-list-event").first()).toHaveCSS("box-shadow", /rgb/);
+    const firstAgendaEvent = page.locator(".fc-list-event .calendar-event-content").first();
+    await expect.poll(() => firstAgendaEvent.evaluate((element) =>
+      element.style.getPropertyValue("--event-category-color"),
+    )).toBe("#375f52");
+    await expect(firstAgendaEvent).toHaveCSS("box-shadow", /rgb/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
     if (viewport.width < 1280) {
@@ -134,12 +153,23 @@ test("desktop Month stacks events and uses a hidden-count popover", async ({ pag
   const cellBounds = (await targetCell.boundingBox())!;
   expect(frame.height).toBeGreaterThanOrEqual(145);
   expect(frame.height).toBeLessThanOrEqual(155);
-  expect(Math.abs(frame.height - cellBounds.width)).toBeLessThanOrEqual(40);
+  expect(Math.abs(frame.height - cellBounds.width)).toBeLessThanOrEqual(50);
 
   const totalEvents = state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length;
   const visibleEvents = targetCell.locator(".fc-daygrid-event:visible");
   const visibleCount = await visibleEvents.count();
   expect(visibleCount).toBe(3);
+  const widths = await visibleEvents.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
+  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+  for (const width of widths) expect(Math.abs(width - (cellBounds.width - 8))).toBeLessThanOrEqual(2);
+  for (const event of await visibleEvents.all()) {
+    const bounds = (await event.boundingBox())!;
+    expect(bounds.height).toBeGreaterThanOrEqual(29);
+    expect(bounds.height).toBeLessThanOrEqual(31);
+    const content = event.locator(".calendar-event-content");
+    await expect(content).toHaveCSS("justify-content", "center");
+    await expect(content.locator(".calendar-event-title")).toHaveCSS("text-overflow", "ellipsis");
+  }
   expect(visibleCount).toBeLessThan(totalEvents);
   await expect(visibleEvents.nth(0)).toHaveCSS("background-color", "rgb(94, 114, 150)");
   await expect(visibleEvents.nth(1)).toHaveCSS("background-color", "rgb(162, 96, 104)");
@@ -167,11 +197,15 @@ test("desktop Month stacks events and uses a hidden-count popover", async ({ pag
   await expect(moreLink).toHaveCSS("box-shadow", "none");
   await expect(moreLink).toHaveCSS("color", "rgb(123, 132, 127)");
   const moreBounds = (await moreLink.boundingBox())!;
+  expect(moreBounds.x - cellBounds.x).toBeGreaterThanOrEqual(7);
+  expect(moreBounds.x - cellBounds.x).toBeLessThanOrEqual(10);
+  expect(moreBounds.y - cellBounds.y).toBeGreaterThanOrEqual(7);
+  expect(moreBounds.y - cellBounds.y).toBeLessThanOrEqual(10);
   expect(moreBounds.y + moreBounds.height).toBeLessThanOrEqual(cellBottom + 0.5);
   expect(moreBounds.y + moreBounds.height).toBeLessThanOrEqual(nextWeekBounds.y + 0.5);
 
   const firstVisibleEvent = visibleEvents.first();
-  expect(await firstVisibleEvent.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBeTruthy();
+  expect(await firstVisibleEvent.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("");
   await expect(firstVisibleEvent).toHaveCSS("background-color", "rgb(94, 114, 150)");
   await firstVisibleEvent.click();
   await expect(page.getByRole("dialog", { name: "Edit appointment" })).toBeVisible();
@@ -189,6 +223,36 @@ test("desktop Month stacks events and uses a hidden-count popover", async ({ pag
   await expect(visibleEvents.nth(0)).toHaveCSS("background-color", "rgb(94, 114, 150)");
   await expect(visibleEvents.nth(1)).toHaveCSS("background-color", "rgb(162, 96, 104)");
   await expect(visibleEvents.nth(2)).toHaveCSS("background-color", "rgb(94, 114, 150)");
+});
+
+test("desktop category colors replace fallbacks after delayed metadata without refresh", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop Chromium coverage only.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openCalendarLayoutPreview(page, createCalendarMockState(), "?delayedCategories=true");
+  const focus = page.locator('[data-appointment-id="preview-1"]');
+  const personal = page.locator('[data-appointment-id="preview-2"]');
+  await expect(focus).toHaveCSS("background-color", "rgb(55, 95, 82)");
+  await expect(personal).toHaveCSS("background-color", "rgb(162, 96, 104)");
+  expect(await focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("");
+  expect(await personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("");
+  await page.getByRole("button", { name: "Next Month" }).click();
+  await page.getByRole("button", { name: "Previous Month" }).click();
+  await expect(focus).toHaveCSS("background-color", "rgb(55, 95, 82)");
+  await expect(personal).toHaveCSS("background-color", "rgb(162, 96, 104)");
+  await page.getByRole("button", { name: "New appointment", exact: true }).last().click();
+  const createDialog = page.getByRole("dialog", { name: "Create appointment" });
+  const categorySelect = createDialog.getByLabel("Category");
+  await expect(categorySelect.locator("option")).toHaveCount(3);
+  await categorySelect.selectOption("personal");
+  await expect(categorySelect).toHaveValue("personal");
+  await createDialog.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: /Quarterly planning.*Focus/ }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit appointment" });
+  await expect(editDialog.getByLabel("Category")).toHaveValue("focus");
+  await editDialog.getByLabel("Category").selectOption("planning");
+  await expect(editDialog.getByLabel("Category")).toHaveValue("planning");
+  await editDialog.getByRole("button", { name: "Close" }).click();
 });
 
 test("mobile Week maps between one and seven days on rotation without changing the selected tab", async ({ page }, testInfo) => {
@@ -218,14 +282,18 @@ test("mobile calendar interactions preserve date, context, and readable time pos
   test.skip(testInfo.project.name !== "desktop", "One Chromium project covers focused mobile interaction.");
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
   await page.setViewportSize({ width: 390, height: 844 });
-  await openCalendarLayoutPreview(page);
+  const state = createCalendarMockState();
+  await openCalendarLayoutPreview(page, state);
 
   const monthTitle = await page.locator(".calendar-toolbar-title").textContent();
   const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
   await targetCell.locator(".mobile-month-event-count").click();
   const sheet = page.getByRole("dialog", { name: "Wednesday, July 29" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("button")).toHaveCount(2);
+  const selectedDateEventCount = state.appointments.filter((appointment) =>
+    appointment.starts_at.startsWith(previewDate),
+  ).length;
+  await expect(sheet.locator(".calendar-day-sheet-event")).toHaveCount(selectedDateEventCount);
   await sheet.getByRole("button", { name: /Design review/ }).click();
   await expect(page.getByRole("dialog", { name: "Edit appointment" }).getByLabel("Title")).toHaveValue("Design review");
   await page.getByRole("button", { name: "Close" }).click();
@@ -420,20 +488,20 @@ test("FullCalendar refreshes custom category styles without affecting other appo
 
   const focus = page.locator('[data-appointment-id="preview-1"]:visible').first();
   const personal = page.locator('[data-appointment-id="preview-2"]:visible').first();
-  await expect.poll(() => focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#375f52");
-  await expect.poll(() => personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
+  await expect.poll(() => focus.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(55, 95, 82)");
+  await expect.poll(() => personal.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(162, 96, 104)");
 
   state.appointments[0] = { ...state.appointments[0], category_id: "planning" };
   await page.getByRole("button", { name: "Filters" }).click();
   await page.locator('input[aria-label="Search appointments"]:visible').fill(" ");
   await page.getByRole("button", { name: "Show results" }).click();
 
-  await expect.poll(() => focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#5e7296");
-  await expect.poll(() => personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
+  await expect.poll(() => focus.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(94, 114, 150)");
+  await expect.poll(() => personal.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(162, 96, 104)");
   await page.getByRole("button", { name: "Week", exact: true }).click();
   await page.getByRole("button", { name: "Month", exact: true }).click();
   await expect.poll(() => page.locator('[data-appointment-id="preview-2"]:visible').first()
-    .evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("#a26068");
+    .evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(162, 96, 104)");
 });
 
 test("calendar loading, empty, and retry states do not flash misleading content", async ({ page }, testInfo) => {

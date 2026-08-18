@@ -29,7 +29,7 @@ export async function updateSession(request: NextRequest) {
   if (!data?.claims && !isPublic && request.nextUrl.pathname !== "/offline") {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
   if (data?.claims && ["/login", "/register"].includes(request.nextUrl.pathname)) {

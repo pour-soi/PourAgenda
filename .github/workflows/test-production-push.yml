@@ -1,0 +1,76 @@
+name: Test Production Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact deployed 40-character commit SHA
+        required: true
+        type: string
+      subscription_id:
+        description: Approved push_subscriptions UUID
+        required: true
+        type: string
+      confirmation:
+        description: Type SEND SYNTHETIC TEST
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send-test:
+    name: Send approved synthetic notification
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate approved target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "SEND SYNTHETIC TEST"
+          test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
+          [[ "${{ inputs.subscription_id }}" =~ ^[0-9a-fA-F-]{36}$ ]]
+      - name: Send synthetic Push to one subscription
+        env:
+          PUSH_DATABASE_URL: ${{ secrets.SUPABASE_URL }}
+          PUSH_DATABASE_CREDENTIAL: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PUSH_APPLICATION_PUBLIC: ${{ secrets.VAPID_PUBLIC_KEY }}
+          PUSH_APPLICATION_PRIVATE: ${{ secrets.VAPID_PRIVATE_KEY }}
+          PUSH_APPLICATION_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
+        run: |
+          node <<'NODE'
+          void (async () => {
+            const webpush = require('web-push');
+            const required = ['PUSH_DATABASE_URL', 'PUSH_DATABASE_CREDENTIAL', 'PUSH_APPLICATION_PUBLIC', 'PUSH_APPLICATION_PRIVATE', 'PUSH_APPLICATION_SUBJECT', 'SUBSCRIPTION_ID'];
+            for (const name of required) if (!process.env[name]) throw new Error(`Missing required configuration: ${name}`);
+            const response = await fetch(`${process.env.PUSH_DATABASE_URL}/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(process.env.SUBSCRIPTION_ID)}&disabled_at=is.null&select=endpoint,p256dh,auth`, {
+              headers: { apikey: process.env.PUSH_DATABASE_CREDENTIAL, authorization: `Bearer ${process.env.PUSH_DATABASE_CREDENTIAL}` },
+            });
+            if (!response.ok) throw new Error(`Subscription lookup failed with HTTP ${response.status}`);
+            const rows = await response.json();
+            if (rows.length !== 1) throw new Error('The approved active subscription was not found uniquely.');
+            webpush.setVapidDetails(process.env.PUSH_APPLICATION_SUBJECT, process.env.PUSH_APPLICATION_PUBLIC, process.env.PUSH_APPLICATION_PRIVATE);
+            try {
+              await webpush.sendNotification({ endpoint: rows[0].endpoint, keys: { p256dh: rows[0].p256dh, auth: rows[0].auth } }, JSON.stringify({
+                title: 'PourAgenda test notification',
+                body: 'Push notifications are working.',
+              }), { TTL: 300 });
+            } catch {
+              throw new Error('Synthetic Push delivery failed. Sensitive provider details were suppressed.');
+            }
+          })();
+          NODE

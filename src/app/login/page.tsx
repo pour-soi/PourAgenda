@@ -1,6 +1,9 @@
 import { AuthForm } from "@/components/auth-form";
 import { AuthPage } from "@/components/auth-page";
 
-export default function LoginPage() {
-  return <AuthPage><AuthForm mode="login" /></AuthPage>;
+import { safeInternalPath } from "@/lib/notification-deep-link";
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
+  return <AuthPage><AuthForm mode="login" nextPath={safeInternalPath(next)} /></AuthPage>;
 }

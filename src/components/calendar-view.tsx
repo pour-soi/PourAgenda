@@ -7,7 +7,7 @@ import listPlugin from "@fullcalendar/list";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DateSelectArg, DatesSetArg, DayCellContentArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { DayExperience } from "@/components/day-experience";
 import { localInputToUtc, toLocalInput } from "@/lib/appointments";
@@ -95,18 +95,9 @@ function CalendarEventContent({
   timeText: string;
   recurring: boolean;
 }) {
-  const contentRef = useRef<HTMLSpanElement>(null);
-
-  useLayoutEffect(() => {
-    const element = contentRef.current?.closest<HTMLElement>(".fc-event");
-    if (!element) return;
-    element.dataset.appointmentId = id;
-    element.style.setProperty("--category-color", categoryColor);
-    element.style.setProperty("--category-text-color", textColor);
-  }, [categoryColor, id, textColor]);
-
   return (
-    <span ref={contentRef} className="calendar-event-content" aria-label={`${title}, ${category}`}>
+    <span className="calendar-event-content" data-event-content-id={id} aria-label={`${title}, ${category}`}
+      style={{ "--event-category-color": categoryColor, "--event-category-text": textColor } as React.CSSProperties}>
       <strong className="calendar-event-title">{title}</strong>
       {timeText && <span className="calendar-event-time">{timeText}</span>}
       {recurring && <span className="calendar-event-recurring" aria-label="Recurring appointment">↻</span>}
