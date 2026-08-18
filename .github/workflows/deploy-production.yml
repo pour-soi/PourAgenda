@@ -40,13 +40,14 @@ jobs:
       - name: Verify selected commit is current main
         env:
           EXPECTED_COMMIT: ${{ inputs.commit_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::commit_sha must be a full 40-character Git commit SHA."
             exit 1
           fi
           actual_commit="$(git rev-parse HEAD)"
-          remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          remote_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           if [[ "$actual_commit" != "$EXPECTED_COMMIT" || "$actual_commit" != "$remote_main" ]]; then
             echo "::error::The selected commit must exactly match current origin/main."
             exit 1
@@ -182,6 +183,7 @@ jobs:
       - name: Verify selected commit is current main
         env:
           EXPECTED_COMMIT: ${{ inputs.commit_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::commit_sha must be a full 40-character Git commit SHA."
@@ -189,7 +191,7 @@ jobs:
           fi
 
           actual_commit="$(git rev-parse HEAD)"
-          remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          remote_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           if [[ "$actual_commit" != "$EXPECTED_COMMIT" || "$actual_commit" != "$remote_main" ]]; then
             echo "::error::The selected commit must exactly match current origin/main."
             exit 1
