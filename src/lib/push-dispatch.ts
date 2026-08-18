@@ -19,6 +19,42 @@ export const pushFailureClass = (statusCode: number) => statusCode === 404 || st
     ? "transient"
     : "provider_rejected";
 
+function supabaseRestUrl(baseUrl: string, path: string) {
+  try {
+    return new URL(`/rest/v1/${path}`, baseUrl).toString();
+  } catch {
+    throw new Error("Invalid SUPABASE_URL configuration.");
+  }
+}
+
+function redactSupabaseDiagnostic(value: string, env: PushWorkerEnv) {
+  let redacted = value.replace(/[\r\n\t]+/g, " ").trim();
+  for (const name of ["SUPABASE_SERVICE_ROLE_KEY", "VAPID_PRIVATE_KEY"] as const) {
+    const secret = env[name];
+    if (secret) redacted = redacted.split(secret).join("[redacted]");
+  }
+  return redacted
+    .replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+\b/g, "[redacted]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/https?:\/\/\S+/gi, "[redacted-url]")
+    .slice(0, 240);
+}
+
+async function supabaseResponseError(env: PushWorkerEnv, operation: string, response: Response) {
+  let code = "";
+  let message = "";
+  try {
+    const body = await response.clone().json() as { code?: unknown; message?: unknown };
+    if (typeof body.code === "string" && /^[A-Za-z0-9_-]{1,32}$/.test(body.code)) code = body.code;
+    if (typeof body.message === "string") message = redactSupabaseDiagnostic(body.message, env);
+  } catch {
+    // Non-JSON upstream errors are reported by status only.
+  }
+  const codeSuffix = code ? ` (${code})` : "";
+  const messageSuffix = message ? `: ${message}` : "";
+  return new Error(`Supabase ${operation} failed with HTTP ${response.status}${codeSuffix}${messageSuffix}.`);
+}
+
 async function supabaseRequest(env: PushWorkerEnv, path: string, init: RequestInit = {}) {
   const serviceRoleKey = env["SUPABASE_SERVICE_ROLE_KEY"];
   const headers = new Headers(init.headers);
@@ -29,15 +65,15 @@ async function supabaseRequest(env: PushWorkerEnv, path: string, init: RequestIn
   } else {
     headers.delete("authorization");
   }
-  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+  return fetch(supabaseRestUrl(env.SUPABASE_URL, path), {
     ...init,
     headers,
   });
 }
 
-async function rows<T>(env: PushWorkerEnv, path: string): Promise<T[]> {
+async function rows<T>(env: PushWorkerEnv, operation: string, path: string): Promise<T[]> {
   const response = await supabaseRequest(env, path);
-  if (!response.ok) throw new Error(`Supabase reminder query failed with HTTP ${response.status}.`);
+  if (!response.ok) throw await supabaseResponseError(env, operation, response);
   return response.json() as Promise<T[]>;
 }
 
@@ -71,9 +107,9 @@ export async function runPersonalAppointmentReminderDispatch(env: PushWorkerEnv,
   }
   webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
   const [appointments, categories, subscriptions] = await Promise.all([
-    rows<Appointment>(env, "appointments?select=*&order=starts_at.asc"),
-    rows<Category>(env, "categories?select=id,user_id,name"),
-    rows<Subscription>(env, "push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null"),
+    rows<Appointment>(env, "appointments query", "appointments?select=*&order=starts_at.asc"),
+    rows<Category>(env, "categories query", "categories?select=id,user_id,name"),
+    rows<Subscription>(env, "push_subscriptions query", "push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null"),
   ]);
   const personalCategoryIds = new Set(categories
     .filter((category) => category.name === PERSONAL_APPOINTMENT_CATEGORY)

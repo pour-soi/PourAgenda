@@ -68,6 +68,47 @@ describe("push dispatch", () => {
     }
   });
 
+  it("constructs canonical REST paths from a Supabase project URL", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      requests.push(url);
+      return Response.json([]);
+    }));
+
+    await runPersonalAppointmentReminderDispatch(
+      { ...env, SUPABASE_URL: "https://example.supabase.co/rest/v1/" },
+      new Date("2026-08-17T19:04:00Z"),
+    );
+
+    expect(requests).toEqual([
+      "https://example.supabase.co/rest/v1/appointments?select=*&order=starts_at.asc",
+      "https://example.supabase.co/rest/v1/categories?select=id,user_id,name",
+      "https://example.supabase.co/rest/v1/push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null",
+    ]);
+  });
+
+  it.each([
+    ["appointments", "appointments query"],
+    ["categories", "categories query"],
+    ["push_subscriptions", "push_subscriptions query"],
+  ])("labels and redacts a failed %s request", async (failedPath, operation) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes(`${failedPath}?`)) {
+        return Response.json({
+          code: "PGRST205",
+          message: `Missing ${env.SUPABASE_SERVICE_ROLE_KEY} and ${env.VAPID_PRIVATE_KEY} at https://private.invalid/path`,
+        }, { status: 404 });
+      }
+      return Response.json([]);
+    }));
+
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await expect(dispatch).rejects.toThrow(`Supabase ${operation} failed with HTTP 404 (PGRST205)`);
+    await expect(dispatch).rejects.not.toThrow(env.SUPABASE_SERVICE_ROLE_KEY);
+    await expect(dispatch).rejects.not.toThrow(env.VAPID_PRIVATE_KEY);
+    await expect(dispatch).rejects.not.toThrow("private.invalid");
+  });
+
   it("claims and sends one due slot per subscription without exposing secrets", async () => {
     const requests: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
