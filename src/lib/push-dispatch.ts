@@ -21,14 +21,17 @@ export const pushFailureClass = (statusCode: number) => statusCode === 404 || st
 
 async function supabaseRequest(env: PushWorkerEnv, path: string, init: RequestInit = {}) {
   const serviceRoleKey = env["SUPABASE_SERVICE_ROLE_KEY"];
+  const headers = new Headers(init.headers);
+  headers.set("apikey", serviceRoleKey);
+  headers.set("content-type", "application/json");
+  if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(serviceRoleKey)) {
+    headers.set("authorization", `Bearer ${serviceRoleKey}`);
+  } else {
+    headers.delete("authorization");
+  }
   return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      "content-type": "application/json",
-      ...init.headers,
-    },
+    headers,
   });
 }
 

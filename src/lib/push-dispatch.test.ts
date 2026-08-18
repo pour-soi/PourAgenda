@@ -24,6 +24,50 @@ const appointment = {
 
 describe("push dispatch", () => {
   beforeEach(() => { vi.clearAllMocks(); });
+  it.each([
+    {
+      label: "uses a new Supabase Secret key only as the API key",
+      serviceRoleKey: "sb_secret_test",
+      expectedAuthorization: null,
+    },
+    {
+      label: "retains legacy JWT service-role authentication",
+      serviceRoleKey: "legacy.payload.signature",
+      expectedAuthorization: "Bearer legacy.payload.signature",
+    },
+  ])("$label for table queries, RPC calls, and delivery updates", async ({ serviceRoleKey, expectedAuthorization }) => {
+    const requests: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ url, init });
+      if (url.includes("appointments?")) return Response.json([appointment]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
+      if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: 1 }]);
+      return new Response(null, { status: 204 });
+    }));
+    pushMocks.sendNotification.mockResolvedValue({ statusCode: 201 });
+
+    await runPersonalAppointmentReminderDispatch(
+      { ...env, ["SUPABASE_SERVICE_ROLE_KEY"]: serviceRoleKey },
+      new Date("2026-08-17T19:04:00Z"),
+    );
+
+    for (const expectedPath of [
+      "appointments?",
+      "categories?",
+      "push_subscriptions?",
+      "rpc/claim_push_reminder_delivery",
+      "push_reminder_deliveries?id=eq.delivery-1",
+    ]) {
+      expect(requests.some(({ url }) => url.includes(expectedPath))).toBe(true);
+    }
+    for (const request of requests) {
+      const headers = new Headers(request.init?.headers);
+      expect(headers.get("apikey")).toBe(serviceRoleKey);
+      expect(headers.get("authorization")).toBe(expectedAuthorization);
+    }
+  });
+
   it("claims and sends one due slot per subscription without exposing secrets", async () => {
     const requests: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
