@@ -18,6 +18,21 @@ export const pushFailureClass = (statusCode: number) => statusCode === 404 || st
   : statusCode === 0 || statusCode === 408 || statusCode === 429 || statusCode >= 500
     ? "transient"
     : "provider_rejected";
+const futureJwtRetryDelaysMs = [1_000, 2_000] as const;
+
+const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function isFutureJwtFailure(response: Response) {
+  if (response.status !== 401) return false;
+  try {
+    const body = await response.clone().json() as { code?: unknown; message?: unknown };
+    return body.code === "PGRST303"
+      && typeof body.message === "string"
+      && /\bJWT issued (?:at|in the) future\b/i.test(body.message);
+  } catch {
+    return false;
+  }
+}
 
 function supabaseRestUrl(baseUrl: string, path: string) {
   try {
@@ -65,10 +80,16 @@ async function supabaseRequest(env: PushWorkerEnv, path: string, init: RequestIn
   } else {
     headers.delete("authorization");
   }
-  return fetch(supabaseRestUrl(env.SUPABASE_URL, path), {
+  const url = supabaseRestUrl(env.SUPABASE_URL, path);
+  const request = {
     ...init,
     headers,
-  });
+  };
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url, request);
+    if (attempt >= futureJwtRetryDelaysMs.length || !await isFutureJwtFailure(response)) return response;
+    await wait(futureJwtRetryDelaysMs[attempt]);
+  }
 }
 
 async function rows<T>(env: PushWorkerEnv, operation: string, path: string): Promise<T[]> {

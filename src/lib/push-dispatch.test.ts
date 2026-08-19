@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const pushMocks = vi.hoisted(() => ({ sendNotification: vi.fn(), setVapidDetails: vi.fn() }));
 vi.mock("web-push", () => ({ default: pushMocks }));
@@ -21,9 +21,14 @@ const appointment = {
   original_occurrence_start: null, created_at: "2026-08-01T00:00:00Z", completed_at: null, cancelled_at: null,
   updated_at: "2026-08-01T00:00:00Z",
 };
+const futureJwtFailure = () => Response.json(
+  { code: "PGRST303", message: "JWT issued at future." },
+  { status: 401 },
+);
 
 describe("push dispatch", () => {
   beforeEach(() => { vi.clearAllMocks(); });
+  afterEach(() => { vi.useRealTimers(); });
   it.each([
     {
       label: "uses a new Supabase Secret key only as the API key",
@@ -85,6 +90,129 @@ describe("push dispatch", () => {
       "https://example.supabase.co/rest/v1/categories?select=id,user_id,name",
       "https://example.supabase.co/rest/v1/push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null",
     ]);
+  });
+
+  it("retries one future-JWT failure after one second with an identical request", async () => {
+    vi.useFakeTimers();
+    const categoryRequests: { url: string; init?: RequestInit }[] = [];
+    let categoryAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("categories?")) {
+        categoryRequests.push({ url, init });
+        categoryAttempts += 1;
+        return categoryAttempts === 1 ? futureJwtFailure() : Response.json([]);
+      }
+      return Response.json([]);
+    }));
+
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(categoryAttempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(dispatch).resolves.toEqual({ occurrences: 0, sent: 0 });
+    expect(categoryAttempts).toBe(2);
+    const snapshots = categoryRequests.map(({ url, init }) => ({
+      url,
+      method: init?.method,
+      body: init?.body,
+      headers: [...new Headers(init?.headers).entries()],
+    }));
+    expect(snapshots[1]).toEqual(snapshots[0]);
+  });
+
+  it("retries two future-JWT failures after one and two seconds", async () => {
+    vi.useFakeTimers();
+    let categoryAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("categories?")) {
+        categoryAttempts += 1;
+        return categoryAttempts < 3 ? futureJwtFailure() : Response.json([]);
+      }
+      return Response.json([]);
+    }));
+
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(categoryAttempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(dispatch).resolves.toEqual({ occurrences: 0, sent: 0 });
+    expect(categoryAttempts).toBe(3);
+  });
+
+  it("throws after three future-JWT failures", async () => {
+    vi.useFakeTimers();
+    let categoryAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("categories?")) {
+        categoryAttempts += 1;
+        return futureJwtFailure();
+      }
+      return Response.json([]);
+    }));
+
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const rejection = expect(dispatch).rejects.toThrow("Supabase categories query failed with HTTP 401 (PGRST303): JWT issued at future.");
+    await vi.runAllTimersAsync();
+    await rejection;
+    expect(categoryAttempts).toBe(3);
+  });
+
+  it("does not retry unrelated HTTP 401 responses", async () => {
+    let categoryAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("categories?")) {
+        categoryAttempts += 1;
+        return Response.json({ code: "PGRST301", message: "Invalid JWT." }, { status: 401 });
+      }
+      return Response.json([]);
+    }));
+
+    await expect(runPersonalAppointmentReminderDispatch(env)).rejects.toThrow("HTTP 401 (PGRST301)");
+    expect(categoryAttempts).toBe(1);
+  });
+
+  it("does not retry other HTTP failures", async () => {
+    let categoryAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("categories?")) {
+        categoryAttempts += 1;
+        return Response.json({ code: "PGRSTX00", message: "Internal error." }, { status: 500 });
+      }
+      return Response.json([]);
+    }));
+
+    await expect(runPersonalAppointmentReminderDispatch(env)).rejects.toThrow("HTTP 500 (PGRSTX00)");
+    expect(categoryAttempts).toBe(1);
+  });
+
+  it("does not claim or deliver before all initial queries succeed", async () => {
+    vi.useFakeTimers();
+    let categoryAttempts = 0;
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      requests.push(url);
+      if (url.includes("appointments?")) return Response.json([appointment]);
+      if (url.includes("categories?")) {
+        categoryAttempts += 1;
+        return categoryAttempts === 1
+          ? futureJwtFailure()
+          : Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      }
+      if (url.includes("push_subscriptions?")) {
+        return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
+      }
+      if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([]);
+      return new Response(null, { status: 204 });
+    }));
+
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(requests.some((url) => url.includes("rpc/claim_push_reminder_delivery"))).toBe(false);
+    expect(pushMocks.sendNotification).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await dispatch;
+    expect(requests.some((url) => url.includes("rpc/claim_push_reminder_delivery"))).toBe(true);
+    expect(pushMocks.sendNotification).not.toHaveBeenCalled();
   });
 
   it.each([
