@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expandAppointments, findRecurringConflicts, recurrencePreview, recurrencePreviewWithExceptions, recurrenceSummary } from "./recurrence";
+import { formatDateTime, formatTime } from "./date-format";
 import type { Appointment } from "@/types/domain";
 
 const series = (overrides: Partial<Appointment> = {}): Appointment => ({
@@ -102,5 +103,63 @@ describe("bounded recurrence expansion", () => {
     const recurring = series({ id: "other", recurrence_frequency: "daily", recurrence_count: 10,
       starts_at: "2026-03-06T17:30:00Z", ends_at: "2026-03-06T18:30:00Z", intended_local_start: "2026-03-06 09:30:00" });
     expect(findRecurringConflicts([candidate], [recurring], "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z").length).toBeGreaterThan(1);
+  });
+  it("does not turn a recurring all-day WFH date into a previous-day timed conflict", () => {
+    const wfh = series({
+      title: "WFH", all_day: true, recurrence_frequency: "weekly", recurrence_count: 2,
+      starts_at: "2026-09-08T00:00:00.000Z", ends_at: "2026-09-09T00:00:00.000Z",
+      intended_local_start: "2026-09-08", intended_local_end: "2026-09-08",
+    });
+    const candidate = series({
+      id: "edited", recurrence_frequency: null, recurrence_interval: null, recurrence_count: null,
+      starts_at: "2026-09-15T15:40:00.000Z", ends_at: "2026-09-15T16:10:00.000Z",
+      intended_local_start: "2026-09-15 08:40:00", intended_local_end: "2026-09-15 09:10:00",
+    });
+    const occurrences = expandAppointments([wfh], candidate.starts_at, candidate.ends_at);
+    expect(occurrences).toHaveLength(1);
+    expect(occurrences[0]).toMatchObject({
+      series_parent_id: "series", intended_local_start: "2026-09-15", intended_local_end: "2026-09-15",
+      starts_at: "2026-09-15T00:00:00.000Z", ends_at: "2026-09-16T00:00:00.000Z",
+    });
+    expect(`${formatDateTime(occurrences[0].starts_at, "America/Los_Angeles", "12h")}–${formatTime(occurrences[0].ends_at, "America/Los_Angeles", "12h")}`)
+      .toBe("09/14/2026 5:00 PM–5:00 PM");
+    expect(findRecurringConflicts([candidate], [wfh], candidate.starts_at, candidate.ends_at)).toEqual([]);
+  });
+  it("uses expanded timed occurrences with preserved duration and excludes only the same occurrence", () => {
+    const wfh = series({
+      title: "WFH", recurrence_frequency: "weekly", recurrence_count: 3,
+      starts_at: "2026-09-01T15:30:00.000Z", ends_at: "2026-09-02T00:00:00.000Z",
+      intended_local_start: "2026-09-01 08:30:00", intended_local_end: "2026-09-01 17:00:00",
+    });
+    const occurrences = expandAppointments([wfh], "2026-09-01T00:00:00.000Z", "2026-09-30T00:00:00.000Z");
+    expect(occurrences.map((item) => [item.starts_at, item.ends_at])).toEqual([
+      ["2026-09-01T15:30:00.000Z", "2026-09-02T00:00:00.000Z"],
+      ["2026-09-08T15:30:00.000Z", "2026-09-09T00:00:00.000Z"],
+      ["2026-09-15T15:30:00.000Z", "2026-09-16T00:00:00.000Z"],
+    ]);
+    expect(occurrences.every((item) => Date.parse(item.ends_at) - Date.parse(item.starts_at) === 8.5 * 3600_000)).toBe(true);
+    const sameOccurrence = { ...occurrences[2], id: occurrences[2].occurrence_id, recurrence_frequency: null };
+    expect(findRecurringConflicts([sameOccurrence], [wfh], sameOccurrence.starts_at, sameOccurrence.ends_at)).toEqual([]);
+    const overlap = series({ id: "other", recurrence_frequency: null, recurrence_interval: null,
+      starts_at: "2026-09-15T15:40:00.000Z", ends_at: "2026-09-15T16:10:00.000Z" });
+    expect(findRecurringConflicts([overlap], [wfh], overlap.starts_at, overlap.ends_at)).toHaveLength(1);
+  });
+  it("applies moved and skipped exceptions only to their actual occurrence dates", () => {
+    const parent = series({ recurrence_frequency: "weekly", recurrence_count: 3 });
+    const generated = expand([parent]);
+    const skipped = series({ id: "skip", recurrence_frequency: null, recurrence_interval: null,
+      series_id: parent.id, original_occurrence_start: generated[1].starts_at, status: "cancelled" });
+    const moved = series({ id: "move", recurrence_frequency: null, recurrence_interval: null,
+      series_id: parent.id, original_occurrence_start: generated[2].starts_at,
+      starts_at: "2026-03-21T19:00:00.000Z", ends_at: "2026-03-21T20:00:00.000Z" });
+    const originalCandidate = series({ id: "original-candidate", recurrence_frequency: null, recurrence_interval: null,
+      starts_at: generated[2].starts_at, ends_at: generated[2].ends_at });
+    const movedCandidate = series({ id: "moved-candidate", recurrence_frequency: null, recurrence_interval: null,
+      starts_at: moved.starts_at, ends_at: moved.ends_at });
+    expect(findRecurringConflicts([originalCandidate], [parent, skipped, moved], originalCandidate.starts_at, originalCandidate.ends_at)).toEqual([]);
+    expect(findRecurringConflicts([movedCandidate], [parent, skipped, moved], movedCandidate.starts_at, movedCandidate.ends_at)).toHaveLength(1);
+    const skippedCandidate = series({ id: "skipped-candidate", recurrence_frequency: null, recurrence_interval: null,
+      starts_at: generated[1].starts_at, ends_at: generated[1].ends_at });
+    expect(findRecurringConflicts([skippedCandidate], [parent, skipped, moved], skippedCandidate.starts_at, skippedCandidate.ends_at)).toEqual([]);
   });
 });

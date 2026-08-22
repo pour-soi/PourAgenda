@@ -413,8 +413,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
         [{ ...(activeEditing ?? {}), ...payload, id: activeEditing?.id ?? "new", series_id: null, original_occurrence_start: null } as Appointment],
         existing, payload.starts_at, horizonEnd.toISOString(),
       );
-      const directConflicts = existing.filter((item) => findConflicts(candidate, [item]).length);
-      conflictRows = [...recurringConflicts, ...directConflicts]
+      conflictRows = recurringConflicts
         .filter((item, index, rows) => rows.findIndex((value) =>
           value.id === item.id && value.starts_at === item.starts_at) === index);
     } else {
@@ -430,9 +429,13 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
         ? await supabase.from("appointments").select("*").in("series_id", seriesIds).limit(500)
         : { data: [], error: null };
       const existing = [...(overlapResult.data ?? []), ...(seriesResult.data ?? []), ...(exceptionResult.data ?? [])]
-        .filter((item) => !seriesParentId || (item.id !== seriesParentId && item.series_id !== seriesParentId)) as Appointment[];
+        .filter((item) => activeScope !== "series" || !seriesParentId
+          || (item.id !== seriesParentId && item.series_id !== seriesParentId)) as Appointment[];
+      const candidateId = activeScope === "occurrence" && activeEditing && "occurrence_id" in activeEditing
+        ? String(activeEditing.occurrence_id)
+        : activeEditing?.id ?? "new";
       conflictRows = findRecurringConflicts(
-        [{ ...(activeEditing ?? {}), ...payload, id: activeEditing?.id ?? "new", series_id: null,
+        [{ ...(activeEditing ?? {}), ...payload, id: candidateId, series_id: null,
           original_occurrence_start: null } as Appointment],
         existing, candidate.starts_at, candidate.ends_at,
       );

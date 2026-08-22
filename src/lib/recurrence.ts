@@ -159,6 +159,8 @@ export function findRecurringConflicts(
   const existing = expandAppointments(existingRows, rangeStart, rangeEnd);
   return candidates.flatMap((candidate) => existing
     .filter((item) => item.occurrence_id !== candidate.occurrence_id
-      && item.starts_at < candidate.ends_at && item.ends_at > candidate.starts_at)
+      && !candidate.all_day && !item.all_day
+      && Date.parse(item.starts_at) < Date.parse(candidate.ends_at)
+      && Date.parse(item.ends_at) > Date.parse(candidate.starts_at))
     .map((item) => ({ ...item, conflicting_occurrence_start: candidate.starts_at })));
 }
