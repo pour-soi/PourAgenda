@@ -1,6 +1,6 @@
 import webpush from "web-push";
 import { expandAppointments } from "./recurrence";
-import { duePersonalReminderSlots, PERSONAL_APPOINTMENT_CATEGORY, PERSONAL_REMINDER_CANDIDATE_MINUTES, personalReminderNotification } from "./personal-appointment-reminders";
+import { duePersonalReminderSlots, PERSONAL_REMINDER_CANDIDATE_MINUTES, personalReminderNotification } from "./personal-appointment-reminders";
 import type { Appointment } from "@/types/domain";
 
 export type PushWorkerEnv = {
@@ -9,7 +9,7 @@ export type PushWorkerEnv = {
   VAPID_PRIVATE_KEY: string;
   VAPID_SUBJECT: string;
 } & Record<string, string>;
-type Category = { id: string; user_id: string; name: string };
+type Category = { id: string; user_id: string; push_enabled: boolean };
 type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
 type DeliveryClaim = { delivery_id: string; delivery_attempt_count: number };
 const retryDelayMinutes = (attemptCount: number) => attemptCount === 1 ? 5 : 10;
@@ -129,11 +129,11 @@ export async function runPersonalAppointmentReminderDispatch(env: PushWorkerEnv,
   webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
   const [appointments, categories, subscriptions] = await Promise.all([
     rows<Appointment>(env, "appointments query", "appointments?select=*&order=starts_at.asc"),
-    rows<Category>(env, "categories query", "categories?select=id,user_id,name"),
+    rows<Category>(env, "categories query", "categories?select=id,user_id,push_enabled"),
     rows<Subscription>(env, "push_subscriptions query", "push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null"),
   ]);
   const personalCategoryIds = new Set(categories
-    .filter((category) => category.name === PERSONAL_APPOINTMENT_CATEGORY)
+    .filter((category) => category.push_enabled)
     .map((category) => `${category.user_id}:${category.id}`));
   const rangeStart = new Date(now.getTime() - 86_400_000).toISOString();
   const rangeEnd = new Date(now.getTime() + 5 * 86_400_000).toISOString();

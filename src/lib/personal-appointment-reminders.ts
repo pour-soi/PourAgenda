@@ -2,32 +2,39 @@ import { addCalendarDays, localInputToUtc, toLocalInput } from "./appointments";
 import type { AppointmentOccurrence } from "@/types/domain";
 import { notificationTargetKey } from "./notification-deep-link";
 
-export const PERSONAL_APPOINTMENT_CATEGORY = "Personal Appointment";
-export const PERSONAL_REMINDER_HOURS = [12, 17, 21] as const;
 export const PERSONAL_REMINDER_RECOVERY_MINUTES = 15;
 export const PERSONAL_REMINDER_CANDIDATE_MINUTES = 30;
+export type PersonalReminderType = "previous_day_21" | "one_hour_before" | "fifteen_minutes_before";
 
 export type PersonalReminderSlot = {
   key: string;
   appointmentId: string;
   occurrenceStart: string;
   scheduledAt: string;
+  reminderType: PersonalReminderType;
 };
 
 export function personalReminderSlots(occurrence: AppointmentOccurrence, now = new Date()): PersonalReminderSlot[] {
-  const localStart = occurrence.all_day
+  if (occurrence.status === "cancelled") return [];
+  const localDate = occurrence.all_day
     ? (occurrence.intended_local_start ?? toLocalInput(occurrence.starts_at, occurrence.timezone)).slice(0, 10)
     : toLocalInput(occurrence.starts_at, occurrence.timezone).slice(0, 10);
   const occurrenceStart = occurrence.original_occurrence_start ?? occurrence.starts_at;
-  return [3, 2, 1].flatMap((daysBefore) => {
-    const reminderDate = addCalendarDays(localStart, -daysBefore);
-    return PERSONAL_REMINDER_HOURS.map((hour) => ({
-      key: [occurrence.occurrence_id, occurrenceStart, reminderDate, hour, "personal-appointment"].join(":"),
+  const previousDay = addCalendarDays(localDate, -1);
+  const slots: Array<{ reminderType: PersonalReminderType; scheduledAt: string }> = [
+    { reminderType: "previous_day_21", scheduledAt: localInputToUtc(`${previousDay}T21:00`, occurrence.timezone) },
+  ];
+  if (!occurrence.all_day) slots.push(
+    { reminderType: "one_hour_before", scheduledAt: new Date(Date.parse(occurrence.starts_at) - 60 * 60_000).toISOString() },
+    { reminderType: "fifteen_minutes_before", scheduledAt: new Date(Date.parse(occurrence.starts_at) - 15 * 60_000).toISOString() },
+  );
+  return slots.map(({ reminderType, scheduledAt }) => ({
+      key: [occurrence.occurrence_id, occurrenceStart, occurrence.starts_at, reminderType, scheduledAt].join(":"),
       appointmentId: occurrence.series_parent_id ?? occurrence.id,
       occurrenceStart,
-      scheduledAt: localInputToUtc(`${reminderDate}T${String(hour).padStart(2, "0")}:00`, occurrence.timezone),
-    }));
-  }).filter((slot) => Date.parse(slot.scheduledAt) > now.getTime());
+      scheduledAt,
+      reminderType,
+    })).filter((slot) => Date.parse(slot.scheduledAt) > now.getTime());
 }
 
 export function duePersonalReminderSlots(occurrence: AppointmentOccurrence, now: Date, windowMinutes = PERSONAL_REMINDER_RECOVERY_MINUTES) {

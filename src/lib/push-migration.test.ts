@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("Personal Appointment Push migration", () => {
   const sql = readFileSync("supabase/migrations/202608170001_personal_appointment_push.sql", "utf8");
+  const categorySql = readFileSync("supabase/migrations/202608220001_category_push_enabled.sql", "utf8");
   it("keeps owner RLS and service-role-only atomic delivery claims", () => {
     expect(sql).toContain("enable row level security");
     expect(sql).toContain("unique (subscription_id, slot_key)");
@@ -17,5 +18,10 @@ describe("Personal Appointment Push migration", () => {
     expect(sql).toContain("delivery.next_attempt_at > p_now - interval '15 minutes'");
     expect(sql).toContain("p_scheduled_at > p_now - interval '15 minutes'");
     expect(sql).not.toMatch(/alter table public\.(appointments|appointment_reminders|user_settings)/i);
+  });
+  it("adds a stable category eligibility flag and uses the name only for one-time bootstrap", () => {
+    expect(categorySql).toMatch(/alter table public\.categories\s+add column push_enabled boolean not null default false/i);
+    expect(categorySql).toMatch(/update public\.categories[\s\S]+set push_enabled = true[\s\S]+where name = 'Personal Appointment'/i);
+    expect(categorySql).not.toMatch(/alter table public\.(appointments|push_subscriptions|push_reminder_deliveries)/i);
   });
 });

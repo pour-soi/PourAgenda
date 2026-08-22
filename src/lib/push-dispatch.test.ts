@@ -45,7 +45,7 @@ describe("push dispatch", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       requests.push({ url, init });
       if (url.includes("appointments?")) return Response.json([appointment]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
       if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: 1 }]);
       return new Response(null, { status: 204 });
@@ -54,7 +54,7 @@ describe("push dispatch", () => {
 
     await runPersonalAppointmentReminderDispatch(
       { ...env, ["SUPABASE_SERVICE_ROLE_KEY"]: serviceRoleKey },
-      new Date("2026-08-17T19:04:00Z"),
+      new Date("2026-08-20T04:04:00Z"),
     );
 
     for (const expectedPath of [
@@ -82,12 +82,12 @@ describe("push dispatch", () => {
 
     await runPersonalAppointmentReminderDispatch(
       { ...env, SUPABASE_URL: "https://example.supabase.co/rest/v1/" },
-      new Date("2026-08-17T19:04:00Z"),
+      new Date("2026-08-20T04:04:00Z"),
     );
 
     expect(requests).toEqual([
       "https://example.supabase.co/rest/v1/appointments?select=*&order=starts_at.asc",
-      "https://example.supabase.co/rest/v1/categories?select=id,user_id,name",
+      "https://example.supabase.co/rest/v1/categories?select=id,user_id,push_enabled",
       "https://example.supabase.co/rest/v1/push_subscriptions?select=id,user_id,endpoint,p256dh,auth&disabled_at=is.null",
     ]);
   });
@@ -105,7 +105,7 @@ describe("push dispatch", () => {
       return Response.json([]);
     }));
 
-    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     await vi.advanceTimersByTimeAsync(999);
     expect(categoryAttempts).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -131,7 +131,7 @@ describe("push dispatch", () => {
       return Response.json([]);
     }));
 
-    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     await vi.advanceTimersByTimeAsync(2_999);
     expect(categoryAttempts).toBe(2);
     await vi.advanceTimersByTimeAsync(1);
@@ -150,7 +150,7 @@ describe("push dispatch", () => {
       return Response.json([]);
     }));
 
-    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     const rejection = expect(dispatch).rejects.toThrow("Supabase categories query failed with HTTP 401 (PGRST303): JWT issued at future.");
     await vi.runAllTimersAsync();
     await rejection;
@@ -196,7 +196,7 @@ describe("push dispatch", () => {
         categoryAttempts += 1;
         return categoryAttempts === 1
           ? futureJwtFailure()
-          : Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+          : Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       }
       if (url.includes("push_subscriptions?")) {
         return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
@@ -205,7 +205,7 @@ describe("push dispatch", () => {
       return new Response(null, { status: 204 });
     }));
 
-    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     await vi.advanceTimersByTimeAsync(999);
     expect(requests.some((url) => url.includes("rpc/claim_push_reminder_delivery"))).toBe(false);
     expect(pushMocks.sendNotification).not.toHaveBeenCalled();
@@ -230,7 +230,7 @@ describe("push dispatch", () => {
       return Response.json([]);
     }));
 
-    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const dispatch = runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     await expect(dispatch).rejects.toThrow(`Supabase ${operation} failed with HTTP 404 (PGRST205)`);
     await expect(dispatch).rejects.not.toThrow(env.SUPABASE_SERVICE_ROLE_KEY);
     await expect(dispatch).rejects.not.toThrow(env.VAPID_PRIVATE_KEY);
@@ -242,43 +242,48 @@ describe("push dispatch", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       requests.push({ url, init });
       if (url.includes("appointments?")) return Response.json([appointment]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
       if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: 1 }]);
       return new Response(null, { status: 204 });
     }));
     pushMocks.sendNotification.mockResolvedValue({ statusCode: 201 });
-    const result = await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    const result = await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     expect(result.sent).toBe(1);
     expect(pushMocks.sendNotification).toHaveBeenCalledTimes(1);
     expect(requests.filter((request) => request.url.includes("rpc/claim_push_reminder_delivery"))).toHaveLength(1);
     expect(JSON.stringify(requests)).not.toContain(env.VAPID_PRIVATE_KEY);
   });
 
-  it("does not schedule other categories or duplicate a claimed slot", async () => {
-    let categoryName = "Medical";
+  it("uses the stable category flag rather than the display name", async () => {
+    let categoryName = "Personal Appointment";
+    let pushEnabled = false;
+    let claims = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.includes("appointments?")) return Response.json([appointment]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: categoryName }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: categoryName, push_enabled: pushEnabled }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
-      if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([]);
+      if (url.includes("rpc/claim_push_reminder_delivery")) { claims += 1; return Response.json([]); }
       return new Response(null, { status: 204 });
     }));
-    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"))).sent).toBe(0);
-    categoryName = "Personal Appointment";
-    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"))).sent).toBe(0);
+    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"))).sent).toBe(0);
+    expect(claims).toBe(0);
+    categoryName = "Renamed private category";
+    pushEnabled = true;
+    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"))).sent).toBe(0);
+    expect(claims).toBe(1);
     expect(pushMocks.sendNotification).not.toHaveBeenCalled();
   });
 
   it("does not deliver cancelled appointments", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.includes("appointments?")) return Response.json([{ ...appointment, status: "cancelled" }]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
       if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: 1 }]);
       return new Response(null, { status: 204 });
     }));
-    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"))).sent).toBe(0);
+    expect((await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"))).sent).toBe(0);
     expect(pushMocks.sendNotification).not.toHaveBeenCalled();
   });
 
@@ -287,11 +292,11 @@ describe("push dispatch", () => {
     let attempt = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url.includes("appointments?")) return Response.json([appointment]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
       if (url.includes("rpc/claim_push_reminder_delivery")) {
         const requested = JSON.parse(String(init?.body)).p_now;
-        const due = ["2026-08-17T19:00:00.000Z", "2026-08-17T19:05:00.000Z", "2026-08-17T19:15:00.000Z"];
+        const due = ["2026-08-20T04:00:00.000Z", "2026-08-20T04:05:00.000Z", "2026-08-20T04:15:00.000Z"];
         if (requested !== due[attempt]) return Response.json([]);
         attempt += 1;
         return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: attempt }]);
@@ -300,17 +305,17 @@ describe("push dispatch", () => {
       return new Response(null, { status: 204 });
     }));
     pushMocks.sendNotification.mockRejectedValue({ statusCode: 503 });
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:00:00Z"));
-    expect(updates.at(-1)).toMatchObject({ status: "retryable", next_attempt_at: "2026-08-17T19:05:00.000Z", last_error_class: "transient" });
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:00:00Z"));
+    expect(updates.at(-1)).toMatchObject({ status: "retryable", next_attempt_at: "2026-08-20T04:05:00.000Z", last_error_class: "transient" });
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     expect(pushMocks.sendNotification).toHaveBeenCalledTimes(1);
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:05:00Z"));
-    expect(updates.at(-1)).toMatchObject({ status: "retryable", next_attempt_at: "2026-08-17T19:15:00.000Z" });
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:14:00Z"));
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:05:00Z"));
+    expect(updates.at(-1)).toMatchObject({ status: "retryable", next_attempt_at: "2026-08-20T04:15:00.000Z" });
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:14:00Z"));
     expect(pushMocks.sendNotification).toHaveBeenCalledTimes(2);
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:15:00Z"));
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:15:00Z"));
     expect(updates.at(-1)).toMatchObject({ status: "failed", next_attempt_at: null });
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:25:00Z"));
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:25:00Z"));
     expect(pushMocks.sendNotification).toHaveBeenCalledTimes(3);
   });
 
@@ -319,13 +324,13 @@ describe("push dispatch", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       requests.push(url);
       if (url.includes("appointments?")) return Response.json([appointment]);
-      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment" }]);
+      if (url.includes("categories?")) return Response.json([{ id: "category-1", user_id: "user-1", name: "Personal Appointment", push_enabled: true }]);
       if (url.includes("push_subscriptions?")) return Response.json([{ id: "subscription-1", user_id: "user-1", endpoint: "https://push.invalid/1", p256dh: "fake", auth: "fake" }]);
       if (url.includes("rpc/claim_push_reminder_delivery")) return Response.json([{ delivery_id: "delivery-1", delivery_attempt_count: 1 }]);
       return new Response(null, { status: 204 });
     }));
     pushMocks.sendNotification.mockRejectedValue({ statusCode: 410 });
-    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-17T19:04:00Z"));
+    await runPersonalAppointmentReminderDispatch(env, new Date("2026-08-20T04:04:00Z"));
     expect(requests.some((url) => url.includes("push_subscriptions?id=eq.subscription-1"))).toBe(true);
   });
 });

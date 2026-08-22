@@ -421,7 +421,7 @@ export function SettingsManager({
         </fieldset>
         <fieldset className="rounded-lg border border-border p-4">
           <legend className="px-1 font-semibold">Personal appointment reminders</legend>
-          <p className="mb-3 text-sm text-muted">Installed PWAs can receive reminders at noon, 5 PM, and 9 PM on each of the three days before appointments in the Personal Appointment category.</p>
+          <p className="mb-3 text-sm text-muted">Installed PWAs can receive reminders at 9 PM the previous day, one hour before, and fifteen minutes before configured personal appointments.</p>
           <div className="flex items-center gap-3">
             <span>{pushState === "enabled" ? "Notifications enabled" : pushState === "blocked" ? "Notifications blocked" : pushState === "unsupported" ? "Notifications unavailable" : "Notifications disabled"}</span>
             {pushState === "enabled"
