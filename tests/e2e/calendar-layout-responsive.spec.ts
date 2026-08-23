@@ -596,3 +596,121 @@ test("calendar loading, empty, and retry states do not flash misleading content"
   await expect(page.locator(".fc")).toBeVisible();
   await expect(page.getByRole("region", { name: "Upcoming" })).toContainText("No upcoming appointments");
 });
+
+test("Desktop Month centers short titles and enlarges only desktop overflow text", async ({ page }, testInfo) => {
+  test.skip(!["desktop", "modern-iphone", "small-iphone"].includes(testInfo.project.name), "Desktop and portrait iPhone coverage only.");
+  test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
+
+  if (testInfo.project.name !== "desktop") {
+    await openCalendarLayoutPreview(page);
+    const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
+    const count = targetCell.locator(".mobile-month-event-count");
+    await expect(count).toHaveText("+2");
+    await expect(count).toHaveCSS("font-size", "11px");
+    await expect(count).toHaveCSS("color", "rgb(123, 132, 127)");
+    await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
+    return;
+  }
+
+  const state = createCalendarMockState();
+  state.appointments = [
+    previewAppointment("center-wfh", "WFH", "focus", `${previewDate}T08:00:00.000Z`, `${previewDate}T08:30:00.000Z`),
+    previewAppointment("center-client", "client", "personal", `${previewDate}T09:00:00.000Z`, `${previewDate}T09:30:00.000Z`),
+    previewAppointment("center-long", "Phone call Psychiatry consultation with a deliberately long title", "planning", `${previewDate}T10:00:00.000Z`, `${previewDate}T10:30:00.000Z`),
+    previewAppointment("center-overflow", "Agency meeting", "focus", `${previewDate}T11:00:00.000Z`, `${previewDate}T11:30:00.000Z`),
+  ];
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openCalendarLayoutPreview(page, state);
+
+  const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
+  const frame = targetCell.locator(".fc-daygrid-day-frame");
+  const visibleBars = targetCell.locator("[data-appointment-id]:visible");
+  await expect(visibleBars).toHaveCount(3);
+
+  for (const id of ["center-wfh", "center-client"]) {
+    const alignment = await targetCell.locator(`[data-appointment-id="${id}"] .calendar-event-title`).evaluate((title) => {
+      const bar = title.closest<HTMLElement>("[data-appointment-id]");
+      if (!bar) throw new Error("Owning event bar was not found.");
+      const barRect = bar.getBoundingClientRect();
+      const textRange = document.createRange();
+      textRange.selectNodeContents(title);
+      const textRect = textRange.getBoundingClientRect();
+      return {
+        horizontalOffset: Math.abs((barRect.left + barRect.width / 2) - (textRect.left + textRect.width / 2)),
+        verticalOffset: Math.abs((barRect.top + barRect.height / 2) - (textRect.top + textRect.height / 2)),
+      };
+    });
+    expect(alignment.horizontalOffset, `${id} horizontal centering`).toBeLessThanOrEqual(1);
+    expect(alignment.verticalOffset, `${id} vertical centering`).toBeLessThanOrEqual(1);
+  }
+
+  const longTitle = targetCell.locator('[data-appointment-id="center-long"] .calendar-event-title');
+  const longTitleLayout = await longTitle.evaluate((title) => {
+    const style = getComputedStyle(title);
+    return {
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflow,
+      textOverflow: style.textOverflow,
+      clientWidth: title.clientWidth,
+      scrollWidth: title.scrollWidth,
+      lineHeight: style.lineHeight,
+      height: title.getBoundingClientRect().height,
+    };
+  });
+  expect(longTitleLayout.whiteSpace).toBe("nowrap");
+  expect(longTitleLayout.overflow).toBe("hidden");
+  expect(longTitleLayout.textOverflow).toBe("ellipsis");
+  expect(longTitleLayout.scrollWidth).toBeGreaterThan(longTitleLayout.clientWidth);
+  expect(longTitleLayout.height).toBeLessThanOrEqual(Number.parseFloat(longTitleLayout.lineHeight) + 1);
+
+  const frameBox = (await frame.boundingBox())!;
+  const barBoxes = await visibleBars.evaluateAll((bars) => bars.map((bar) => {
+    const bounds = bar.getBoundingClientRect();
+    const style = getComputedStyle(bar);
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      right: bounds.right,
+      minHeight: style.minHeight,
+      borderRadius: style.borderRadius,
+      marginLeft: style.marginLeft,
+      marginRight: style.marginRight,
+    };
+  }));
+  for (const bar of barBoxes) {
+    expect(bar.width).toBeCloseTo(frameBox.width - 8, 0);
+    expect(bar.height).toBeGreaterThanOrEqual(29);
+    expect(bar.height).toBeLessThanOrEqual(30);
+    expect(bar.x - frameBox.x).toBeCloseTo(4, 0);
+    expect(frameBox.x + frameBox.width - bar.right).toBeCloseTo(4, 0);
+    expect(bar.minHeight).toBe("29px");
+    expect(bar.borderRadius).toBe("6px");
+    expect(bar.marginLeft).toBe("4px");
+    expect(bar.marginRight).toBe("4px");
+  }
+  expect(Math.max(...barBoxes.map((bar) => bar.width)) - Math.min(...barBoxes.map((bar) => bar.width))).toBeLessThanOrEqual(1);
+  for (let index = 1; index < barBoxes.length; index += 1) {
+    const gap = barBoxes[index].y - (barBoxes[index - 1].y + barBoxes[index - 1].height);
+    expect(gap).toBeGreaterThanOrEqual(2);
+    expect(gap).toBeLessThanOrEqual(3);
+  }
+
+  const moreLink = targetCell.locator(".fc-more-link");
+  await expect(moreLink).toHaveText("+1");
+  await expect(moreLink).toHaveCSS("font-size", "13px");
+  await expect(moreLink).toHaveCSS("font-weight", "600");
+  await expect(moreLink).toHaveCSS("color", "rgb(123, 132, 127)");
+  await expect(moreLink).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const moreBox = (await moreLink.boundingBox())!;
+  expect(moreBox.x - frameBox.x).toBeGreaterThanOrEqual(7);
+  expect(moreBox.x - frameBox.x).toBeLessThanOrEqual(9);
+  expect(moreBox.y - frameBox.y).toBeGreaterThanOrEqual(7);
+  expect(moreBox.y - frameBox.y).toBeLessThanOrEqual(10);
+
+  await moreLink.click();
+  const popover = page.locator(".fc-popover:visible");
+  await expect(popover).toHaveCount(1);
+  await expect(popover.locator(".fc-daygrid-event")).toHaveCount(4);
+});

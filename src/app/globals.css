@@ -753,6 +753,10 @@ button, a, input, select { min-height: var(--touch); }
     padding: 4px 6px;
     border-radius: 6px;
   }
+  .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-main {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .calendar-event-content {
     position: relative;
     display: flex;
@@ -783,7 +787,7 @@ button, a, input, select { min-height: var(--touch); }
     min-height: 20px;
     padding: 0;
     color: #7b847f;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     line-height: 20px;
   }
