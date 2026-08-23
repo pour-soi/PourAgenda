@@ -65,9 +65,11 @@ jobs:
             if (/^[^.]+\.[^.]+\.[^.]+$/.test(credential)) {
               headers.Authorization = `Bearer ${credential}`;
             }
-            const response = await fetch(`${process.env.PUSH_DATABASE_URL}/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(process.env.SUBSCRIPTION_ID)}&disabled_at=is.null&select=endpoint,p256dh,auth`, {
-              headers,
-            });
+            const lookupUrl = new URL('/rest/v1/push_subscriptions', process.env.PUSH_DATABASE_URL);
+            lookupUrl.searchParams.set('id', `eq.${process.env.SUBSCRIPTION_ID}`);
+            lookupUrl.searchParams.set('disabled_at', 'is.null');
+            lookupUrl.searchParams.set('select', 'endpoint,p256dh,auth');
+            const response = await fetch(lookupUrl, { headers });
             if (!response.ok) throw new Error(`Subscription lookup failed with HTTP ${response.status}`);
             const rows = await response.json();
             if (rows.length !== 1) throw new Error('The approved active subscription was not found uniquely.');
