@@ -57,8 +57,16 @@ jobs:
             const webpush = require('web-push');
             const required = ['PUSH_DATABASE_URL', 'PUSH_DATABASE_CREDENTIAL', 'PUSH_APPLICATION_PUBLIC', 'PUSH_APPLICATION_PRIVATE', 'PUSH_APPLICATION_SUBJECT', 'SUBSCRIPTION_ID'];
             for (const name of required) if (!process.env[name]) throw new Error(`Missing required configuration: ${name}`);
+            const credential = process.env.PUSH_DATABASE_CREDENTIAL;
+            const headers = {
+              apikey: credential,
+              'Content-Type': 'application/json',
+            };
+            if (/^[^.]+\.[^.]+\.[^.]+$/.test(credential)) {
+              headers.Authorization = `Bearer ${credential}`;
+            }
             const response = await fetch(`${process.env.PUSH_DATABASE_URL}/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(process.env.SUBSCRIPTION_ID)}&disabled_at=is.null&select=endpoint,p256dh,auth`, {
-              headers: { apikey: process.env.PUSH_DATABASE_CREDENTIAL, authorization: `Bearer ${process.env.PUSH_DATABASE_CREDENTIAL}` },
+              headers,
             });
             if (!response.ok) throw new Error(`Subscription lookup failed with HTTP ${response.status}`);
             const rows = await response.json();
