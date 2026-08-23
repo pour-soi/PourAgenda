@@ -197,8 +197,8 @@ test("desktop Month stacks events and uses a hidden-count popover", async ({ pag
   await expect(moreLink).toHaveCSS("box-shadow", "none");
   await expect(moreLink).toHaveCSS("color", "rgb(123, 132, 127)");
   const moreBounds = (await moreLink.boundingBox())!;
-  expect(moreBounds.x - cellBounds.x).toBeGreaterThanOrEqual(7);
-  expect(moreBounds.x - cellBounds.x).toBeLessThanOrEqual(10);
+  expect(moreBounds.x - cellBounds.x).toBeGreaterThanOrEqual(17);
+  expect(moreBounds.x - cellBounds.x).toBeLessThanOrEqual(19);
   expect(moreBounds.y - cellBounds.y).toBeGreaterThanOrEqual(7);
   expect(moreBounds.y - cellBounds.y).toBeLessThanOrEqual(10);
   expect(moreBounds.y + moreBounds.height).toBeLessThanOrEqual(cellBottom + 0.5);
@@ -699,15 +699,18 @@ test("Desktop Month centers short titles and enlarges only desktop overflow text
 
   const moreLink = targetCell.locator(".fc-more-link");
   await expect(moreLink).toHaveText("+1");
-  await expect(moreLink).toHaveCSS("font-size", "13px");
-  await expect(moreLink).toHaveCSS("font-weight", "600");
+  await expect(moreLink).toHaveCSS("font-size", "17px");
+  await expect(moreLink).toHaveCSS("font-weight", "700");
   await expect(moreLink).toHaveCSS("color", "rgb(123, 132, 127)");
   await expect(moreLink).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   const moreBox = (await moreLink.boundingBox())!;
-  expect(moreBox.x - frameBox.x).toBeGreaterThanOrEqual(7);
-  expect(moreBox.x - frameBox.x).toBeLessThanOrEqual(9);
+  expect(moreBox.x - frameBox.x).toBeGreaterThanOrEqual(17);
+  expect(moreBox.x - frameBox.x).toBeLessThanOrEqual(19);
   expect(moreBox.y - frameBox.y).toBeGreaterThanOrEqual(7);
   expect(moreBox.y - frameBox.y).toBeLessThanOrEqual(10);
+  const dateBox = (await targetCell.locator(".fc-daygrid-day-number").boundingBox())!;
+  expect(moreBox.x + moreBox.width).toBeLessThan(dateBox.x);
+  expect(moreBox.y + moreBox.height).toBeLessThanOrEqual(barBoxes[0].y);
 
   await moreLink.click();
   const popover = page.locator(".fc-popover:visible");

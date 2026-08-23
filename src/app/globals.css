@@ -779,7 +779,7 @@ button, a, input, select { min-height: var(--touch); }
     position: absolute;
     z-index: 2;
     top: 8px;
-    left: 8px;
+    left: 18px;
     margin: 0;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-more-link {
@@ -787,8 +787,8 @@ button, a, input, select { min-height: var(--touch); }
     min-height: 20px;
     padding: 0;
     color: #7b847f;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 17px;
+    font-weight: 700;
     line-height: 20px;
   }
   .mobile-page-title { font-size: 1.5rem; }
