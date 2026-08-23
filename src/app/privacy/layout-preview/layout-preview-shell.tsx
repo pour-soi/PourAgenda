@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { AgendaShell } from "@/components/agenda-shell";
 
 const categories = [
@@ -16,14 +15,8 @@ export function LayoutPreviewShell({ timeFormatPreference, automaticTimezone, de
   initialNotificationTarget?: string;
   initialAppointmentDate?: string;
 }) {
-  const [visibleCategories, setVisibleCategories] = useState(delayCategories ? [] : categories);
-  useEffect(() => {
-    if (!delayCategories) return;
-    const timer = window.setTimeout(() => setVisibleCategories(categories), 100);
-    return () => window.clearTimeout(timer);
-  }, [delayCategories]);
   return <AgendaShell email="Private local preview" userId="layout-preview" timezone="UTC"
     automaticTimezone={automaticTimezone} timeFormatPreference={timeFormatPreference}
-    defaultDuration={60} defaultReminders={[10]} categories={visibleCategories}
+    defaultDuration={60} defaultReminders={[10]} categories={delayCategories ? [] : categories}
     initialNotificationTarget={initialNotificationTarget} initialAppointmentDate={initialAppointmentDate}/>;
 }

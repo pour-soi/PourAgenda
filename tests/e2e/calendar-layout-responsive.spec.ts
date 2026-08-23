@@ -225,21 +225,86 @@ test("desktop Month stacks events and uses a hidden-count popover", async ({ pag
   await expect(visibleEvents.nth(2)).toHaveCSS("background-color", "rgb(94, 114, 150)");
 });
 
-test("desktop category colors replace fallbacks after delayed metadata without refresh", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop Chromium coverage only.");
+test("category colors replace fallbacks after delayed metadata without refresh", async ({ page }, testInfo) => {
+  test.skip(!["desktop", "modern-iphone", "small-iphone"].includes(testInfo.project.name), "Desktop and portrait iPhone coverage only.");
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await openCalendarLayoutPreview(page, createCalendarMockState(), "?delayedCategories=true");
-  const focus = page.locator('[data-appointment-id="preview-1"]');
-  const personal = page.locator('[data-appointment-id="preview-2"]');
-  await expect(focus).toHaveCSS("background-color", "rgb(55, 95, 82)");
-  await expect(personal).toHaveCSS("background-color", "rgb(162, 96, 104)");
-  expect(await focus.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("");
-  expect(await personal.evaluate((element) => element.style.getPropertyValue("--category-color"))).toBe("");
-  await page.getByRole("button", { name: "Next Month" }).click();
-  await page.getByRole("button", { name: "Previous Month" }).click();
-  await expect(focus).toHaveCSS("background-color", "rgb(55, 95, 82)");
-  await expect(personal).toHaveCSS("background-color", "rgb(162, 96, 104)");
+  const state = createCalendarMockState();
+  state.holdCategories = true;
+  await openCalendarLayoutPreview(page, state, "?delayedCategories=true");
+  const expected = [
+    { id: "preview-1", background: "rgb(55, 95, 82)", hex: "#375f52" },
+    { id: "preview-3", background: "rgb(162, 96, 104)", hex: "#a26068" },
+    { id: "preview-4", background: "rgb(94, 114, 150)", hex: "#5e7296" },
+  ];
+  for (const item of expected) {
+    const element = page.locator(`[data-appointment-id="${item.id}"]`);
+    await expect(element).toHaveCSS("background-color", "rgb(102, 113, 104)");
+  }
+  const before = await page.evaluate((ids) => {
+    const calendar = window.__pourAgendaCalendar;
+    const traceWindow = window as typeof window & { __categoryColorNodes?: (Element | null)[] };
+    traceWindow.__categoryColorNodes = ids.map((id) => document.querySelector(`[data-appointment-id="${id}"]`));
+    return ids.map((id) => {
+      const event = calendar?.getEventById(id);
+      const internal = event as unknown as { _def?: { defId?: string }; _instance?: { instanceId?: string } };
+      const element = document.querySelector<HTMLElement>(`[data-appointment-id="${id}"]`);
+      return {
+        id,
+        backgroundColor: event?.backgroundColor,
+        borderColor: event?.borderColor,
+        computedBackground: element ? getComputedStyle(element).backgroundColor : null,
+        computedBorder: element ? getComputedStyle(element).borderColor : null,
+        defId: internal?._def?.defId,
+        instanceId: internal?._instance?.instanceId,
+      };
+    });
+  }, expected.map((item) => item.id));
+  for (const item of before) {
+    expect(item.backgroundColor).toBe("#667168");
+    expect(item.borderColor).toBe("#667168");
+    expect(item.computedBackground).toBe("rgb(102, 113, 104)");
+  }
+
+  state.holdCategories = false;
+  for (const item of expected) {
+    const element = page.locator(`[data-appointment-id="${item.id}"]`);
+    await expect(element).toHaveCSS("background-color", item.background);
+  }
+  const after = await page.evaluate((ids) => {
+    const calendar = window.__pourAgendaCalendar;
+    const traceWindow = window as typeof window & { __categoryColorNodes?: (Element | null)[] };
+    return ids.map((id, index) => {
+      const event = calendar?.getEventById(id);
+      const internal = event as unknown as { _def?: { defId?: string }; _instance?: { instanceId?: string } };
+      const element = document.querySelector<HTMLElement>(`[data-appointment-id="${id}"]`);
+      return {
+        id,
+        backgroundColor: event?.backgroundColor,
+        borderColor: event?.borderColor,
+        computedBackground: element ? getComputedStyle(element).backgroundColor : null,
+        computedBorder: element ? getComputedStyle(element).borderColor : null,
+        sameNode: traceWindow.__categoryColorNodes?.[index] === element,
+        defId: internal?._def?.defId,
+        instanceId: internal?._instance?.instanceId,
+      };
+    });
+  }, expected.map((item) => item.id));
+  for (let index = 0; index < expected.length; index += 1) {
+    expect(after[index].backgroundColor).toBe(expected[index].hex);
+    expect(after[index].borderColor).toBe(expected[index].hex);
+    expect(after[index].computedBackground).toBe(expected[index].background);
+    expect(after[index].computedBorder).toBe(expected[index].background);
+    expect(after[index].defId).toBe(before[index].defId);
+    expect(after[index].instanceId).toBe(before[index].instanceId);
+  }
+
+  await page.evaluate(() => window.__pourAgendaCalendar?.next());
+  await page.evaluate(() => window.__pourAgendaCalendar?.prev());
+  for (const item of expected) {
+    await expect(page.locator(`[data-appointment-id="${item.id}"]`)).toHaveCSS("background-color", item.background);
+  }
+
+  if (testInfo.project.name !== "desktop") return;
   await page.getByRole("button", { name: "New appointment", exact: true }).last().click();
   const createDialog = page.getByRole("dialog", { name: "Create appointment" });
   const categorySelect = createDialog.getByLabel("Category");

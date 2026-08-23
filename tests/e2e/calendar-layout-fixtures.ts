@@ -2,6 +2,12 @@ import type { Page } from "@playwright/test";
 
 export const previewDate = "2026-07-29";
 
+const previewCategories = [
+  { id: "focus", name: "Focus", color: "#375f52", hidden: false },
+  { id: "personal", name: "Personal", color: "#a26068", hidden: false },
+  { id: "planning", name: "Planning", color: "#5e7296", hidden: false },
+];
+
 export const previewAppointment = (
   id: string,
   title: string,
@@ -54,18 +60,21 @@ export type CalendarMockState = {
   appointments: typeof previewAppointments;
   delayMs: number;
   fail: boolean;
+  holdCategories: boolean;
 };
 
 export const createCalendarMockState = (): CalendarMockState => ({
   appointments: [...previewAppointments],
   delayMs: 0,
   fail: false,
+  holdCategories: false,
 });
 
 export async function installCalendarLayoutMocks(page: Page, state: CalendarMockState) {
   if (page.url() !== "about:blank") await page.waitForLoadState("networkidle");
   await page.unroute("**/rest/v1/appointments*");
   await page.unroute("**/rest/v1/appointment_shares*");
+  await page.unroute("**/rest/v1/categories*");
   await page.route("**/rest/v1/appointments*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ message: "Preview is read-only." }) });
@@ -98,6 +107,14 @@ export async function installCalendarLayoutMocks(page: Page, state: CalendarMock
     contentType: "application/json",
     body: "[]",
   }));
+  await page.route("**/rest/v1/categories*", async (route) => {
+    while (state.holdCategories) await new Promise((resolve) => setTimeout(resolve, 10));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(previewCategories),
+    });
+  });
 }
 
 export async function openCalendarLayoutPreview(page: Page, state = createCalendarMockState(), query = "") {

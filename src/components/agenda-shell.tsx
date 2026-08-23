@@ -62,7 +62,7 @@ const blankDraft = (categoryId: string, timezone: string, reminders: number[], d
     recurrence_until: "", reminder_minutes: reminders };
 };
 
-export function AgendaShell({ email, userId, timezone: configuredTimezone, automaticTimezone, timeFormatPreference, defaultDuration, defaultReminders, categories, initialNotificationTarget }: {
+export function AgendaShell({ email, userId, timezone: configuredTimezone, automaticTimezone, timeFormatPreference, defaultDuration, defaultReminders, categories: initialCategories, initialNotificationTarget }: {
   email: string; userId: string; timezone: string; automaticTimezone: boolean; timeFormatPreference: TimeFormatPreference | string; defaultDuration: number; defaultReminders: number[]; categories: Category[]; initialNotificationTarget?: string; initialAppointmentDate?: string;
 }) {
   const systemHourCycle = useSyncExternalStore(subscribeToSystemTimeFormat, detectSystemHourCycle, getServerHourCycle);
@@ -71,6 +71,7 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const timeFormat: TimeFormat = resolveTimeFormat(timeFormatPreference, systemHourCycle);
   const defaultDurationMinutes = validDuration(defaultDuration);
   const supabase = useMemo(() => createClient(), []);
+  const [categories, setCategories] = useState(initialCategories);
   const [appointments, setAppointments] = useState<AppointmentOccurrence[]>([]);
   const [recurrenceRows, setRecurrenceRows] = useState<Appointment[]>([]);
   const [range, setRange] = useState({ start: new Date(0), end: new Date(864e5) });
@@ -117,6 +118,30 @@ export function AgendaShell({ email, userId, timezone: configuredTimezone, autom
   const initialDraft = useRef<Draft | null>(null);
   const saveContext = useRef<{ scope: "single" | "series" | "occurrence"; editing: Appointment | AppointmentOccurrence | null; draft: Draft } | null>(null);
   const [recurringEditChoice, setRecurringEditChoice] = useState<{ action: "save" | "delete"; item: Appointment | AppointmentOccurrence; trigger: HTMLElement | null } | null>(null);
+  useEffect(() => {
+    let active = true;
+    let loading = false;
+    const refreshCategories = async () => {
+      if (loading) return;
+      loading = true;
+      const result = await supabase.from("categories").select("id,name,color,hidden")
+        .eq("user_id", userId).order("name");
+      loading = false;
+      if (active && !result.error && result.data) setCategories(result.data as Category[]);
+    };
+    const handleFocus = () => void refreshCategories();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void refreshCategories();
+    };
+    void refreshCategories();
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [supabase, userId]);
   const updateRange = useCallback((start: Date, end: Date) => {
     setRange((current) => (
       current.start.getTime() === start.getTime() && current.end.getTime() === end.getTime()
