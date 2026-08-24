@@ -295,6 +295,7 @@ export default function CalendarView({
   const mobileMonthDayContent = useCallback((arg: DayCellContentArg) => {
     const dateKey = localDateKey(arg.date);
     const eventCount = calendarEventsForDate(events, dateKey, timezone).length;
+    const hiddenEventCount = Math.max(0, eventCount - 1);
     const openFromCount = (trigger: HTMLElement) => openDaySheet(dateKey, trigger);
 
     return (
@@ -306,12 +307,12 @@ export default function CalendarView({
           openDaySheet(dateKey, event.currentTarget);
         }}
       >
-        {eventCount > 1 && (
+        {hiddenEventCount > 0 && (
           <span
             role="button"
             tabIndex={0}
             className="mobile-month-event-count"
-            aria-label={`${eventCount} ${eventCount === 1 ? "appointment" : "appointments"} on ${daySheetTitle(dateKey)}`}
+            aria-label={`${hiddenEventCount} hidden ${hiddenEventCount === 1 ? "appointment" : "appointments"} on ${daySheetTitle(dateKey)}`}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -324,7 +325,7 @@ export default function CalendarView({
               openFromCount(event.currentTarget);
             }}
           >
-            +{eventCount}
+            +{hiddenEventCount}
           </span>
         )}
         <span className="mobile-month-date-number">{arg.dayNumberText}</span>

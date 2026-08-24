@@ -65,7 +65,7 @@ test("calendar layout follows the approved responsive breakpoints", async ({ pag
       const frame = await targetCell.locator(".fc-daygrid-day-frame").boundingBox();
       expect(frame!.height).toBeGreaterThanOrEqual(58);
       expect(frame!.height, `${viewport.width}px month cell height`).toBeLessThanOrEqual(viewport.width < 390 ? 62 : 69);
-      await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("+2");
+      await expect(targetCell.locator(".mobile-month-event-count")).toHaveText("+1");
       await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
       expect(await targetCell.locator('[data-appointment-id]:visible').count()).toBe(1);
     } else {
@@ -440,7 +440,8 @@ test("mobile Month day sheet preserves per-event colors, ordering, and calendar 
   const singleEventCell = page.locator('.fc-daygrid-day[data-date="2026-07-28"]');
   const count = targetCell.locator(".mobile-month-event-count");
   const dateNumber = targetCell.locator(".mobile-month-date-number");
-  await expect(count).toHaveText(`+${state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length}`);
+  const totalEventCount = state.appointments.filter((item) => item.starts_at.startsWith("2026-07-29")).length;
+  await expect(count).toHaveText(`+${totalEventCount - 1}`);
   await expect(count).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(count).toHaveCSS("border-top-style", "none");
   await expect(count).toHaveCSS("color", "rgb(123, 132, 127)");
@@ -602,10 +603,16 @@ test("Desktop Month centers short titles and enlarges only desktop overflow text
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "The guarded layout preview is local-only.");
 
   if (testInfo.project.name !== "desktop") {
-    await openCalendarLayoutPreview(page);
+    const mobileState = createCalendarMockState();
+    mobileState.appointments.push(
+      previewAppointment("mobile-hidden-1", "Hidden appointment 1", "focus", `${previewDate}T20:00:00.000Z`, `${previewDate}T20:30:00.000Z`),
+      previewAppointment("mobile-hidden-2", "Hidden appointment 2", "planning", `${previewDate}T21:00:00.000Z`, `${previewDate}T21:30:00.000Z`),
+    );
+    await openCalendarLayoutPreview(page, mobileState);
     const targetCell = page.locator(`.fc-daygrid-day[data-date="${previewDate}"]`);
     const count = targetCell.locator(".mobile-month-event-count");
-    await expect(count).toHaveText("+2");
+    await expect(count).toHaveText("+3");
+    await expect(targetCell.locator("[data-appointment-id]:visible")).toHaveCount(1);
     await expect(count).toHaveCSS("font-size", "11px");
     await expect(count).toHaveCSS("color", "rgb(123, 132, 127)");
     await expect(targetCell.locator(".fc-more-link:visible")).toHaveCount(0);
