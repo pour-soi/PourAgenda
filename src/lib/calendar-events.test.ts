@@ -95,4 +95,22 @@ describe("calendar event category colors", () => {
       ["cross-midnight", "2026-08-19T06:30:00.000Z", "2026-08-19T08:30:00.000Z"],
     ]);
   });
+
+  it("maps an inclusive two-day all-day appointment to FullCalendar's exclusive end", () => {
+    const holiday = {
+      ...occurrence("holiday", "personal"),
+      title: "HOLIDAY",
+      all_day: true,
+      starts_at: "2026-11-26T00:00:00.000Z",
+      ends_at: "2026-11-28T00:00:00.000Z",
+      intended_local_start: "2026-11-26",
+      intended_local_end: "2026-11-27",
+    };
+
+    expect(buildCalendarEvents([holiday], categories)[0]).toMatchObject({
+      start: "2026-11-26",
+      end: "2026-11-28",
+      allDay: true,
+    });
+  });
 });
