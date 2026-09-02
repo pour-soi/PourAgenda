@@ -74,6 +74,7 @@ test("all-day Month bars span inclusive dates and split only at week boundaries"
       const harness = event.closest(".fc-daygrid-event-harness");
       const dayEvents = harness?.closest(".fc-daygrid-day-events") ?? null;
       const dayCell = harness?.closest(".fc-daygrid-day") ?? null;
+      const dayFrame = harness?.closest(".fc-daygrid-day-frame") ?? null;
       return {
         event: rect(event),
         harness: rect(harness),
@@ -84,8 +85,24 @@ test("all-day Month bars span inclusive dates and split only at week boundaries"
         harnessPosition: harness ? getComputedStyle(harness).position : null,
         harnessTop: harness ? getComputedStyle(harness).top : null,
         dayEventsPosition: dayEvents ? getComputedStyle(dayEvents).position : null,
+        dayFrameOverflow: dayFrame ? getComputedStyle(dayFrame).overflow : null,
       };
     });
+    const paintedAt = (id: string, date: string) => {
+      const dayCell = document.querySelector(`[data-date="${date}"]`);
+      if (!(dayCell instanceof HTMLElement)) return false;
+      dayCell.scrollIntoView({ block: "center", inline: "nearest" });
+      const cellRect = dayCell.getBoundingClientRect();
+      const x = (cellRect.left + cellRect.right) / 2;
+      for (const event of document.querySelectorAll(`[data-appointment-id="${id}"]`)) {
+        if (!(event instanceof HTMLElement)) continue;
+        const eventRect = event.getBoundingClientRect();
+        if (x < eventRect.left || x > eventRect.right) continue;
+        const hit = document.elementFromPoint(x, eventRect.top + eventRect.height / 2);
+        if (hit && (hit === event || event.contains(hit))) return true;
+      }
+      return false;
+    };
     return {
       cells: {
         d22: cell("2026-11-22"), d23: cell("2026-11-23"), d24: cell("2026-11-24"),
@@ -104,6 +121,14 @@ test("all-day Month bars span inclusive dates and split only at week boundaries"
         longSameWeek: placements("long-same-week"),
         weekBoundary: placements("week-boundary"),
         monthBoundary: placements("month-boundary"),
+      },
+      painted: {
+        sameDay: paintedAt("same-day", "2026-11-25"),
+        sameWeekEnd: paintedAt("same-week", "2026-11-27"),
+        longSameWeekEnd: paintedAt("long-same-week", "2026-11-24"),
+        weekBoundaryStart: paintedAt("week-boundary", "2026-11-28"),
+        weekBoundaryEnd: paintedAt("week-boundary", "2026-11-29"),
+        monthBoundaryEnd: paintedAt("month-boundary", "2026-12-02"),
       },
     };
   });
@@ -147,12 +172,21 @@ test("all-day Month bars span inclusive dates and split only at week boundaries"
       expect(placement.harnessPosition).toBe("absolute");
       expect(placement.harnessTop).toBe("0px");
       expect(placement.dayEventsPosition).toBe("relative");
+      expect(placement.dayFrameOverflow).toBe("visible");
       expect(Math.abs(placement.harness!.top - placement.dayEvents!.top)).toBeLessThanOrEqual(1);
     } else {
       expect(placement.harnessPosition).toBe("relative");
     }
     expect(Math.abs((placement.event!.top - placement.cell!.top) - baselineTop)).toBeLessThanOrEqual(1);
   }
+  expect(geometry.painted).toEqual({
+    sameDay: true,
+    sameWeekEnd: true,
+    longSameWeekEnd: true,
+    weekBoundaryStart: true,
+    weekBoundaryEnd: true,
+    monthBoundaryEnd: true,
+  });
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });

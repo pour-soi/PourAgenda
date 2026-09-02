@@ -736,7 +736,7 @@ button, a, input, select { min-height: var(--touch); }
     min-height: 152px;
     max-height: 155px;
     aspect-ratio: 1 / 1;
-    overflow: hidden;
+    overflow: visible;
   }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day-top { min-height: 32px; padding: 8px 10px 0; }
   .pouragenda-calendar .fc .fc-dayGridMonth-view .fc-daygrid-day.fc-day-today .fc-daygrid-day-frame {
