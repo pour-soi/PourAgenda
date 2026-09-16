@@ -149,6 +149,43 @@ test.describe("Phase 1 personal productivity foundation", () => {
     await expect(editor.getByRole("button", { name: "Choose end time" })).toContainText("5:00 PM");
   });
 
+  for (const [input, date] of [
+    ["doctor   10102026  12pm", "10/10/2026"],
+    ["doctor 1010 12pm", "10/10/2026"],
+    ["doctor 0115 12pm", "01/15/2027"],
+  ]) {
+    test(`Quick Add pre-fills ${input} instead of today's default`, async ({ page }) => {
+      await page.getByRole("textbox", { name: "Quick Add" }).fill(input);
+      await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
+      const editor = page.getByRole("dialog", { name: "Create appointment" });
+      await expect(editor.getByLabel("Title")).toHaveValue("doctor");
+      await expect(editor.getByRole("button", { name: "Choose start date" })).toContainText(date);
+      await expect(editor.getByRole("button", { name: "Choose start time" })).toContainText("12:00 PM");
+      await expect(editor.getByRole("button", { name: "Choose end date" })).toContainText(date);
+      await expect(editor.getByRole("button", { name: "Choose end time" })).toContainText("1:00 PM");
+    });
+  }
+
+  test("Quick Add carries Chinese dates and times into each new editor draft", async ({ page }) => {
+    // The preview uses UTC; tomorrow must advance from July 30 to July 31.
+    await page.clock.setFixedTime(new Date("2026-07-30T01:00:00Z"));
+    const editor = page.getByRole("dialog", { name: "Create appointment" });
+    for (const [input, title, date, time, endTime] of [
+      ["明天下午3点 看医生", "看医生", "07/31/2026", "3:00 PM", "4:00 PM"],
+      ["周六 10:30 开会", "开会", "08/01/2026", "10:30 AM", "11:30 AM"],
+      ["明天下午3点", "", "07/31/2026", "3:00 PM", "4:00 PM"],
+    ]) {
+      await page.getByRole("textbox", { name: "Quick Add" }).fill(input);
+      await page.getByRole("button", { name: "Open event editor with Quick Add" }).click();
+      await expect(editor.getByLabel("Title")).toHaveValue(title);
+      await expect(editor.getByRole("button", { name: "Choose start date" })).toContainText(date);
+      await expect(editor.getByRole("button", { name: "Choose start time" })).toContainText(time);
+      await expect(editor.getByRole("button", { name: "Choose end date" })).toContainText(date);
+      await expect(editor.getByRole("button", { name: "Choose end time" })).toContainText(endTime);
+      await editor.getByRole("button", { name: "Close" }).click();
+    }
+  });
+
   test("global search ranks authorized fields and supports keyboard open, navigation, close, and focus return", async ({ page }) => {
     const searchButton = page.getByRole("button", { name: "Search events" });
     await searchButton.click();

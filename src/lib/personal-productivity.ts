@@ -290,17 +290,46 @@ export function parseQuickAdd(
   }
 
   if (!dateKey) {
-    const numericDate = /\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\b/.exec(remainder);
+    // Compact dates follow the same month/day order as slash-separated dates.
+    const compactDate = /\b(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(\d{4})?\b(?!\s*(?:am|pm)\b)/i.exec(remainder);
+    const numericDate = compactDate ?? /\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\b/.exec(remainder);
     if (numericDate) {
       const month = Number(numericDate[1]) - 1;
       const day = Number(numericDate[2]);
       const currentYear = Number(today.slice(0, 4));
-      const candidate = new Date(Date.UTC(currentYear, month, day, 12));
-      if (candidate.getUTCMonth() === month && candidate.getUTCDate() === day) {
+      const explicitYear = compactDate?.[3];
+      const monthDay = `${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const year = explicitYear ? Number(explicitYear) : currentYear + (monthDay < today.slice(5) ? 1 : 0);
+      const candidate = new Date(Date.UTC(year, month, day, 12));
+      if (candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month && candidate.getUTCDate() === day) {
         dateKey = candidate.toISOString().slice(0, 10);
-        if (dateKey < today) dateKey = `${currentYear + 1}-${dateKey.slice(5)}`;
         remainder = remainder.replace(numericDate[0], "");
       }
+    }
+  }
+
+  if (!dateKey) {
+    const relativeDay = /(今天|明天|后天)/.exec(remainder);
+    const weekday = /(?:周|星期)([日天一二三四五六])/.exec(remainder);
+    if (relativeDay) {
+      dateKey = addCalendarDays(today, ["今天", "明天", "后天"].indexOf(relativeDay[1]));
+      remainder = remainder.replace(relativeDay[0], "");
+    } else if (weekday) {
+      dateKey = dateKeyForWeekday(today, "日一二三四五六".indexOf(weekday[1].replace("天", "日")));
+      remainder = remainder.replace(weekday[0], "");
+    }
+  }
+
+  const chineseClock = /(?<!\d)(上午|下午|晚上)?\s*(\d{1,2})点(?:(半)|(\d{1,2})分?)?/.exec(remainder);
+  if (chineseClock) {
+    const hour = Number(chineseClock[2]);
+    const minute = chineseClock[3] ? "30" : chineseClock[4] ?? "00";
+    const parsed = chineseClock[1]
+      ? parseClock(chineseClock[2], minute, chineseClock[1] === "上午" ? "am" : "pm")
+      : hour <= 23 && Number(minute) <= 59 ? `${String(hour).padStart(2, "0")}:${minute.padStart(2, "0")}` : null;
+    if (parsed) {
+      time = parsed;
+      remainder = remainder.replace(chineseClock[0], "");
     }
   }
 
@@ -356,7 +385,7 @@ export function parseQuickAdd(
     }
   }
 
-  const title = remainder.replace(/^[\s,;-]+|[\s,;-]+$/g, "").replace(/\s+/g, " ").trim() || original;
+  const title = remainder.replace(/^[\s,;-]+|[\s,;-]+$/g, "").replace(/\s+/g, " ").trim();
   if (!dateKey) {
     return { title, dateKey: null, time, durationMinutes, location, recurrenceFrequency, status: "unsupported", explanation: time ? "Time recognized. Choose a date before saving." : "Choose a date and time before saving." };
   }

@@ -133,6 +133,23 @@ describe("deterministic Quick Add", () => {
 
   it.each([
     ["Dentist tomorrow 2pm", "Dentist", "2026-07-31", "14:00"],
+    ["doctor   10102026  12pm", "doctor", "2026-10-10", "12:00"],
+    ["doctor 1010 12pm", "doctor", "2026-10-10", "12:00"],
+    ["doctor 0115 12pm", "doctor", "2027-01-15", "12:00"],
+    ["doctor 0730 12pm", "doctor", "2026-07-30", "12:00"],
+    ["doctor 10/10 12pm", "doctor", "2026-10-10", "12:00"],
+    ["doctor tomorrow 1230pm", "doctor", "2026-07-31", "12:30"],
+    ["doctor tomorrow 1230 pm", "doctor", "2026-07-31", "12:30"],
+    ["12252026 at 9am Dentist", "Dentist", "2026-12-25", "09:00"],
+    ["Doctor 01152026 2pm", "Doctor", "2026-01-15", "14:00"],
+    ["Doctor 02292028 2pm", "Doctor", "2028-02-29", "14:00"],
+    ["明天下午3点 看医生", "看医生", "2026-07-31", "15:00"],
+    ["看医生 明天 下午3点", "看医生", "2026-07-31", "15:00"],
+    ["周五 10:30 开会", "开会", "2026-07-31", "10:30"],
+    ["今天上午10点30分 开会", "开会", "2026-07-30", "10:30"],
+    ["后天晚上7点半 吃饭", "吃饭", "2026-08-01", "19:30"],
+    ["明天下午3点", "", "2026-07-31", "15:00"],
+    ["tomorrow 2pm", "", "2026-07-31", "14:00"],
     ["Meeting Friday 10am", "Meeting", "2026-07-31", "10:00"],
     ["Dinner tonight", "Dinner", "2026-07-30", "19:00"],
     ["Gym Monday 7pm", "Gym", "2026-08-03", "19:00"],
@@ -158,6 +175,36 @@ describe("deterministic Quick Add", () => {
     expect(parseQuickAdd("Meeting next week", "UTC", now)).toMatchObject({
       dateKey: null,
       status: "unsupported",
+    });
+  });
+
+  it("resolves tomorrow using the active timezone across a year boundary", () => {
+    const instant = new Date("2027-01-01T01:00:00Z");
+    expect(parseQuickAdd("明天下午3点 看医生", "America/Tijuana", instant)).toMatchObject({
+      title: "看医生", dateKey: "2027-01-01", time: "15:00",
+    });
+    expect(parseQuickAdd("明天下午3点 看医生", "Asia/Shanghai", instant)).toMatchObject({
+      title: "看医生", dateKey: "2027-01-02", time: "15:00",
+    });
+  });
+
+  it("preserves unrecognized or invalid time text for review", () => {
+    expect(parseQuickAdd("明天 下午25点 看医生", "UTC", now)).toMatchObject({
+      title: "下午25点 看医生", dateKey: "2026-07-31", time: null, status: "partial",
+    });
+  });
+
+  it.each(["02302026", "02292027", "13102026", "0230", "1310"])("does not remove invalid compact date %s", (date) => {
+    expect(parseQuickAdd(`doctor ${date} 12pm`, "UTC", now)).toMatchObject({
+      title: `doctor ${date}`, dateKey: null, time: "12:00", status: "unsupported",
+    });
+  });
+  it("validates leap days after inferring the year", () => {
+    expect(parseQuickAdd("doctor 0229 12pm", "UTC", new Date("2027-12-01T10:00:00Z"))).toMatchObject({
+      title: "doctor", dateKey: "2028-02-29", time: "12:00",
+    });
+    expect(parseQuickAdd("doctor 0229 12pm", "UTC", new Date("2028-03-01T10:00:00Z"))).toMatchObject({
+      title: "doctor 0229", dateKey: null, time: "12:00",
     });
   });
   it("recognizes weekly phrases without silently completing a missing time", () => {
